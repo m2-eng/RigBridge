@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    // Python
+    "ms-python.python",
+    "ms-python.black-formatter",
+    "charliermarsh.ruff",
+    // YAML
+    "redhat.vscode-yaml",
+    // Formatter (JS / HTML / CSS)
+    "esbenp.prettier-vscode",
+    // Docker
+    "ms-azuretools.vscode-docker",
+    // EditorConfig
+    "editorconfig.editorconfig"
+  ]
+}
