@@ -1,0 +1,52 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# .dockerignore – RigBridge
+# Schließt Dateien vom Docker-Build-Kontext aus.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Git
+.git/
+.gitignore
+.gitkeep
+
+# CI/CD & Konfiguration
+.github/
+.copilot/
+.vscode/
+.editorconfig
+
+# Python-Cache
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+
+# Tests (werden nicht in das Image gepackt)
+tests/
+
+# Dokumentation
+docs/
+README.md
+LICENSE
+
+# Secrets & lokale Overrides
+.env
+.env.*
+docker-compose.override.yml
+
+# Temporäre Dateien
+*.tmp
+*.bak
+*.log
+logs/
+tmp/
+temp/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

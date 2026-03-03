@@ -1,0 +1,76 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml – RigBridge (Lokale Entwicklungs- und Integrationsumgebung)
+#
+# Zielplattform: Linux (Produktion und Linux-Entwicklung)
+# Windows:       Anwendung wird NATIV gestartet, kein Docker.
+#
+# USB-Passthrough (Linux):
+#   Den devices-Abschnitt im Service einkommentieren und den Pfad
+#   auf das tatsaechliche Geraet anpassen (/dev/ttyUSB0, /dev/ttyACM0, ...).
+#
+# Secrets und Passwoerter NUR ueber .env-Datei uebergeben (liegt in .gitignore).
+# Vorlage: .env.example
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  rigbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: rigbridge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    volumes:
+      # Konfigurationsdatei aus dem Host einbinden (read-only)
+      - ./config.yaml:/app/config.yaml:ro
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Geraete-Zugriff fuer USB/Serial (Linux) – bei Bedarf einkommentieren
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+
+    # ────────────────────────────────────────────────────────────────
+    # Sicherheitshaertung
+    # ────────────────────────────────────────────────────────────────
+    # Privilegien-Eskalation im Container verbieten
+    security_opt:
+      - no-new-privileges:true
+
+    # Alle Linux-Capabilities entfernen; nur zurueckgeben, was benoetigt wird.
+    # NET_BIND_SERVICE nur notwendig, wenn Port < 1024 gebunden wird (hier nicht).
+    cap_drop:
+      - ALL
+
+    # Root-Dateisystem read-only; beschreibbare Verzeichnisse als tmpfs
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+
+    # Ressourcen-Limits (Produktion anpassen)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - rigbridge_net
+
+networks:
+  rigbridge_net:
+    driver: bridge
+    internal: false  # true setzen, wenn kein externer Netzwerkzugriff benoetigt wird

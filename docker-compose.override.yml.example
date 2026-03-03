@@ -1,0 +1,24 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# docker-compose.override.yml.example – Lokale Entwicklungs-Overrides (Linux)
+#
+# Gilt nur fuer Linux-Entwickler, die Docker lokal einsetzen.
+# Auf Windows wird die Anwendung NATIV gestartet – diese Datei ist dort
+# nicht relevant.
+#
+# Kopieren und anpassen:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# docker-compose.override.yml liegt in .gitignore und wird NICHT versioniert.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  rigbridge:
+    # USB-Geraet an den Container weiterleiten (Pfad ggf. anpassen)
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      # - /dev/ttyACM0:/dev/ttyACM0
+
+    # Quellcode fuer schnelle Entwicklung ohne Rebuild einbinden
+    volumes:
+      - ./src:/app/src
+      - ./protocols:/app/protocols

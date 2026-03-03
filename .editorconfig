@@ -1,0 +1,67 @@
+# EditorConfig – https://editorconfig.org
+# Gilt für alle Editoren, die EditorConfig unterstützen.
+# Spiegelt die Einstellungen aus .vscode/settings.json wider.
+
+root = true
+
+# ──────────────────────────────────────────────
+# Alle Dateien (Fallback)
+# ──────────────────────────────────────────────
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# ──────────────────────────────────────────────
+# Python (Backend) – PEP 8: 4 Spaces!
+# ──────────────────────────────────────────────
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+# ──────────────────────────────────────────────
+# JavaScript
+# ──────────────────────────────────────────────
+[*.js]
+indent_style = space
+indent_size = 2
+max_line_length = 120
+
+# ──────────────────────────────────────────────
+# JSON / JSONC
+# ──────────────────────────────────────────────
+[*.{json,jsonc}]
+indent_style = space
+indent_size = 2
+
+# ──────────────────────────────────────────────
+# YAML (Protokolldateien)
+# ──────────────────────────────────────────────
+[*.{yaml,yml}]
+indent_style = space
+indent_size = 2
+
+# ──────────────────────────────────────────────
+# HTML / CSS / SCSS
+# ──────────────────────────────────────────────
+[*.{html,css,scss}]
+indent_style = space
+indent_size = 2
+
+# ──────────────────────────────────────────────
+# Markdown (kein Trailing-Whitespace-Trim,
+# da zwei Leerzeichen am Zeilenende = <br>)
+# ──────────────────────────────────────────────
+[*.md]
+trim_trailing_whitespace = false
+
+# ──────────────────────────────────────────────
+# Dockerfile
+# ──────────────────────────────────────────────
+[{Dockerfile,Dockerfile.*,*.dockerfile}]
+indent_style = space
+indent_size = 2

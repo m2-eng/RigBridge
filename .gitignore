@@ -1,0 +1,125 @@
+# ──────────────────────────────────────────────
+# Node.js / npm (Frontend-Tooling)
+# ──────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ──────────────────────────────────────────────
+# Build-Ausgaben
+# ──────────────────────────────────────────────
+dist/
+build/
+out/
+.output/
+.next/
+.nuxt/
+.vite/
+
+# ──────────────────────────────────────────────
+# Umgebungsvariablen & Secrets
+# ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# ──────────────────────────────────────────────
+# Konfiguration (lokale Overrides)
+# ──────────────────────────────────────────────
+config/local.*
+config/*.local.*
+
+# ──────────────────────────────────────────────
+# Logs
+# ──────────────────────────────────────────────
+logs/
+*.log
+
+# ──────────────────────────────────────────────
+# Betriebssystem
+# ──────────────────────────────────────────────
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+
+# ──────────────────────────────────────────────
+# IDEs & Editoren
+# ──────────────────────────────────────────────
+# VS Code (projektspezifische Einstellungen NICHT ignorieren)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# JetBrains
+.idea/
+*.iml
+*.iws
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+
+# ──────────────────────────────────────────────
+# Tests & Coverage
+# ──────────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ──────────────────────────────────────────────
+# Temporäre Dateien
+# ──────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# ──────────────────────────────────────────────
+# Python (Backend)
+# ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ──────────────────────────────────────────────
+# Docker
+# ──────────────────────────────────────────────
+# Docker-Volumes und lokale Override-Configs werden nicht versioniert
+docker-compose.override.yml
