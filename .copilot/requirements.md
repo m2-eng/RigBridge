@@ -5,6 +5,10 @@
 > - den Umsetzungsstand zu prüfen
 > - Inkonsistenzen zwischen Anforderung und Implementierung zu erkennen
 > - neue Features gegen bestehende Anforderungen abzugleichen
+> - den aktuellen fachlichen Soll-/Ist-Stand ohne Änderungshistorie zu dokumentieren
+>
+> **Hinweis:** Eine Änderungshistorie wird in diesem Dokument bewusst **nicht** geführt;
+> Versionierung und Nachvollziehbarkeit erfolgen über Git.
 >
 > **Status-Legende:**
 > | Symbol | Bedeutung |
@@ -167,7 +171,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | LOG-03 | Logs werden auf `stdout` ausgegeben (Docker-kompatibel). | ✅ (StreamHandler zu stderr) |
 | LOG-04 | Optionale Ausgabe in eine Logdatei ist konfigurierbar. | ✅ (RigBridgeLogger.configure(log_file=...) optional) |
 | LOG-05 | **Alle** Log-Einträge (inkl. Uvicorn, Framework-Logs) verwenden das gleiche einheitliche Format: `[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [MODULE] MESSAGE` | ✅ (StructuredFormatter auf alle Logger angewendet, uvicorn.access/error konfiguriert, uvicorn.run mit log_config=None) |
-| LOG-06 | Zeitstempel enthalten **Millisekunden** (nicht nur Sekunden). | ✅ (Format: `[2026-03-03 15:49:34.097]`) |
+| LOG-06 | Zeitstempel enthalten **Millisekunden** (nicht nur Sekunden). | ✅ (Format: `[YYYY-MM-DD HH:MM:SS.mmm]`) |
 
 ---
 
