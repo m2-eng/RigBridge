@@ -1,0 +1,5617 @@
+# Icom IC-905 Complete Protocol Definition
+# CI-V Protocol - All commands from IC-905 CI-V Reference Guide
+# Based on official Icom CI-V Protocol Reference
+# All commented commands are not yet reviewed
+
+# command not yet implemented
+# 1C 03
+# 1E 01
+# 1E 03
+# 0E Ax
+
+protocol:
+  name: "Icom IC-905"
+  model: "ic905"
+  manufacturer: "Icom"
+  description: "Multi-band transceiver with complete CI-V command set"
+
+  config:
+    timeouts:
+      command_response: 1.0
+      session_idle: 300.0
+
+    frame:
+      preamble: [0xFE, 0xFE]
+      terminator: 0xFD
+      default_controller: 0xE0
+      default_radio: 0xAC
+
+  addresses:
+    controller: 0xE0
+    radio: 0xAC
+
+  # templates for common request or response patterns
+  templates:
+    status_ok_ng: &status_ok_ng
+      type: "alternatives"
+      description: "Returns either success or error response (mutually exclusive)"
+      alternatives:
+        - name: "success"
+          value: 0xFB
+          description: "Command executed successfully"
+        - name: "error"
+          value: 0xFA
+          description: "Command failed or invalid parameter"
+
+    band_edge_bcd5: &band_edge_bcd5
+      type: "structure"
+      description: "Band edge frequencies using 5-byte BCD format"
+      structure:
+        - name: "edge_number"
+          type: "uint8"
+          offset: 0
+          length: 1
+        - name: "lower_edge"
+          type: "bcd5_freq"
+          offset: 1
+          length: 5
+        - name: "separator"
+          type: "fixed_byte"
+          value: 0x2D
+          offset: 6
+          length: 1
+        - name: "higher_edge"
+          type: "bcd5_freq"
+          offset: 7
+          length: 5
+
+    band_edge_bcd6: &band_edge_bcd6
+      type: "structure"
+      description: "Band edge frequencies using 6-byte BCD format"
+      structure:
+        - name: "edge_number"
+          type: "uint8"
+          offset: 0
+          length: 1
+        - name: "lower_edge"
+          type: "bcd6_freq"
+          offset: 1
+          length: 6
+        - name: "separator"
+          type: "fixed_byte"
+          value: 0x2D
+          offset: 7
+          length: 1
+        - name: "higher_edge"
+          type: "bcd6_freq"
+          offset: 8
+          length: 6
+
+  # Command definitions based on IC-905 CI-V Reference Guide
+  commands:
+
+    # ========================================================================
+    # TRANSCEIVE COMMANDS (0x00-0x01)
+    # ========================================================================
+    send_frequency_data:
+      cmd: 0x00
+      subcmd: null
+      description: "Send frequency data (transceive)"
+      request:
+        alternatives:
+          - name: "frequency"
+            type: "bcd5_freq"
+            description: "Operating frequency to send"
+          - name: "frequency"
+            type: "bcd6_freq"
+            description: "Operating frequency to send (10 GHz band)"
+      response: *status_ok_ng
+
+    send_mode_data:
+      cmd: 0x01
+      subcmd: null
+      description: "Send mode data (transceive)"
+      request:
+        structure:
+          - name: "operating mode"
+            type: "operating_mode"
+            description: "Send the mode data (transceive)"
+      response: *status_ok_ng
+
+    # ========================================================================
+    # READ COMMANDS (0x02-0x04)
+    # ========================================================================
+    read_band_edge:
+      cmd: 0x02
+      subcmd: null
+      description: "Read the band edge frequencies"
+      request:
+        structure: []
+      response:
+        alternatives:
+          - structure: *band_edge_bcd5
+          - structure: *band_edge_bcd6
+
+    read_operating_frequency:
+      cmd: 0x03
+      subcmd: null
+      description: "Read operating frequency"
+      request:
+        structure: []
+      response:
+        alternatives:
+          - name: "frequency"
+            type: "bcd5_freq"
+            description: "Read the operating frequency in BCD"
+          - name: "frequency"
+            type: "bcd6_freq"
+            description: "Read the operating frequency in BCD (10 GHz band)"
+
+    read_operating_mode:
+      cmd: 0x04
+      subcmd: null
+      description: "Read operating mode"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "operating mode"
+            type: "operating_mode"
+            description: "Read the operating mode and filter setting"
+
+    # ========================================================================
+    # SET COMMANDS (0x05-0x06)
+    # ========================================================================
+    set_operating_frequency:
+      cmd: 0x05
+      subcmd: null
+      description: "Set operating frequency"
+      request:
+        alternatives:
+          - name: "frequency"
+            type: "bcd5_freq"
+            description: "Operating frequency to set"
+          - name: "frequency"
+            type: "bcd6_freq"
+            description: "Operating frequency to set (10 GHz band)"
+      response: *status_ok_ng
+
+    set_operating_mode:
+      cmd: 0x06
+      subcmd: null
+      description: "Set operating mode and filter"
+      request:
+        structure:
+          - name: "operating mode"
+            type: "operating_mode"
+            description: "Set the operating mode and filter setting"
+      response: *status_ok_ng
+
+    # ========================================================================
+    # VFO COMMANDS (0x07)
+    # ========================================================================
+    select_vfo_mode:
+      cmd: 0x07
+      subcmd: null
+      description: "Select the VFO mode"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_vfo_a:
+      cmd: 0x07
+      subcmd: 0x00
+      description: "Select VFO A"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_vfo_b:
+      cmd: 0x07
+      subcmd: 0x01
+      description: "Select VFO B"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    equalize_vfo:
+      cmd: 0x07
+      subcmd: 0xA0
+      description: "Equalize VFO A and VFO B"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    exchange_vfo:
+      cmd: 0x07
+      subcmd: 0xB0
+      description: "Exchange VFO A and VFO B"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    # ========================================================================
+    # MEMORY COMMANDS (0x08-0x0B)
+    # ========================================================================
+    select_memory_mode:
+      cmd: 0x08
+      subcmd: null
+      description: "Select the Memory mode"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    # select_memory_channel:
+    #   cmd: 0x08
+    #   subcmd: null
+    #   description: "Select the Memory channel (0000-0099) or call channel"
+    #   request:
+    #     structure:
+    #       - name: "channel_high"
+    #         type: "uint8_0_99"
+    #         description: "Channel high byte (BCD)"
+    #       - name: "channel_low"
+    #         type: "uint8_0_99"
+    #         description: "Channel low byte (BCD)"
+    #   response: *status_ok_ng
+
+    # select_memory_group:
+    #   cmd: 0x08
+    #   subcmd: 0xA0
+    #   description: "Select the Memory group (0000-0099) or call channel group (0100)"
+    #   request:
+    #     structure:
+    #       - name: "group_high"
+    #         type: "uint8_0_99"
+    #         description: "Group high byte (BCD)"
+    #       - name: "group_low"
+    #         type: "uint8_0_99"
+    #         description: "Group low byte (BCD)"
+    #   response: *status_ok_ng
+
+    memory_write:
+      cmd: 0x09
+      subcmd: null
+      description: "Write to memory"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    memory_to_vfo:
+      cmd: 0x0A
+      subcmd: null
+      description: "Copy memory to VFO"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    memory_clear:
+      cmd: 0x0B
+      subcmd: null
+      description: "Clear memory"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    # ========================================================================
+    # OFFSET COMMANDS (0x0C-0x0D)
+    # ========================================================================
+    read_frequency_offset:
+      cmd: 0x0C
+      subcmd: null
+      description: "Read duplex offset frequency"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "offset"
+            type: "bcd3_freq"
+            description: "Duplex offset frequency in BCD"
+
+    send_frequency_offset:
+      cmd: 0x0D
+      subcmd: null
+      description: "Set duplex offset frequency"
+      request:
+        structure:
+          - name: "offset"
+            type: "bcd3_freq"
+            description: "Duplex offset frequency in BCD"
+      response: *status_ok_ng
+
+    # ========================================================================
+    # SCAN COMMANDS (0x0E)
+    # ========================================================================
+    cancel_scan:
+      cmd: 0x0E
+      subcmd: 0x00
+      description: "Cancel scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_program_memory_scan:
+      cmd: 0x0E
+      subcmd: 0x01
+      description: "Start a programmed/memory scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_program_scan:
+      cmd: 0x0E
+      subcmd: 0x02
+      description: "Start a programmed scan"
+      request:
+          structure: []
+      response: *status_ok_ng
+
+    start_df_scan:
+      cmd: 0x0E
+      subcmd: 0x03
+      description: "Start a ΔF scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_program_scan_fine:
+      cmd: 0x0E
+      subcmd: 0x12
+      description: "Start a Fine programmed scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_df_scan_fine:
+      cmd: 0x0E
+      subcmd: 0x13
+      description: "Start a Fine ΔF scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_memory_scan:
+      cmd: 0x0E
+      subcmd: 0x22
+      description: "Start a memory scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_select_memory_scan:
+      cmd: 0x0E
+      subcmd: 0x23
+      description: "Start a select memory scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    start_mode_select_scan:
+      cmd: 0x0E
+      subcmd: 0x24
+      description: "Start a Mode Select scan"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_5khz:
+      cmd: 0x0E
+      subcmd: 0xA1
+      description: "Select ΔF scan span (±5kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_10khz:
+      cmd: 0x0E
+      subcmd: 0xA2
+      description: "Select ΔF scan span (±10kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_20khz:
+      cmd: 0x0E
+      subcmd: 0xA3
+      description: "Select ΔF scan span (±20kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_50khz:
+      cmd: 0x0E
+      subcmd: 0xA4
+      description: "Select ΔF scan span (±50kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_100khz:
+      cmd: 0x0E
+      subcmd: 0xA5
+      description: "Select ΔF scan span (±100kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_500khz:
+      cmd: 0x0E
+      subcmd: 0xA6
+      description: "Select ΔF scan span (±500kHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    select_df_scan_span_1mhz:
+      cmd: 0x0E
+      subcmd: 0xA7
+      description: "Select ΔF scan span (±1MHz)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    clear_select_channel_setting:
+      cmd: 0x0E
+      subcmd: 0xB0
+      description: "Clear the Select channel setting"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_as_select_channel:
+      cmd: 0x0E
+      subcmd: 0xB1
+      description: "Set as select channel"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_select_channel:
+      cmd: 0x0E
+      subcmd: 0xB1
+      description: "Set the channel as select channel (1-3)"
+      request:
+        structure:
+          - name: "channel"
+            type: "uint8"
+            description: "Channel selection (1-3)"
+            enum:
+              0x01: "Select channel 1"
+              0x02: "Select channel 2"
+              0x03: "Select channel 3"
+      response: *status_ok_ng
+
+    set_select_memory_scan_channel:
+      cmd: 0x0E
+      subcmd: 0xB2
+      description: "Set the Select memory scan channel all"
+      request:
+        structure:
+          - name: "channel"
+            type: "uint8"
+            description: "Channel selection"
+            enum:
+              0x00: "All channels"
+              0x01: "Select channel 1"
+              0x02: "Select channel 2"
+              0x03: "Select channel 3"
+      response: *status_ok_ng
+
+    set_scan_resume_off:
+      cmd: 0x0E
+      subcmd: 0xD0
+      description: "Set Scan resume OFF"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_scan_resume_on:
+      cmd: 0x0E
+      subcmd: 0xD3
+      description: "Set Scan resume ON (Close&Delay)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    # ========================================================================
+    # SPLIT/DUPLEX COMMANDS (0x0F)
+    # ========================================================================
+
+    read_split_duplex_status:
+      cmd: 0x0F
+      subcmd: null
+      description: "Set split OFF"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "channel"
+            type: "uint8"
+            description: "Channel selection (1-3)"
+            enum:
+              0x00: "Read Split OFF setting"
+              0x01: "Read Split ON setting"
+              0x11: "Read DUP- operation"
+              0x12: "Read DUP+ operation"
+              0x13: "Read DD Repeater Simplex mode (RPS)"
+
+    set_split_off:
+      cmd: 0x0F
+      subcmd: 0x00
+      description: "Set split OFF"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_split_on:
+      cmd: 0x0F
+      subcmd: 0x01
+      description: "Set split ON"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_simplex:
+      cmd: 0x0F
+      subcmd: 0x10
+      description: "Set simplex operation"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_duplex_minus:
+      cmd: 0x0F
+      subcmd: 0x11
+      description: "Set DUP- operation"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_duplex_plus:
+      cmd: 0x0F
+      subcmd: 0x12
+      description: "Set DUP+ operation"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    set_dd_repeater_simplex:
+      cmd: 0x0F
+      subcmd: 0x13
+      description: "Set DD Repeater Simplex mode (RPS)"
+      request:
+        structure: []
+      response: *status_ok_ng
+
+    # ========================================================================
+    # TUNING STEP (0x10)
+    # ========================================================================
+    tuning_step_enum: &tuning_step_enum
+      0x00: "OFF(10Hz/1Hz)"
+      0x01: "100Hz"
+      0x02: "500Hz"
+      0x03: "1kHz"
+      0x04: "5kHz"
+      0x05: "6.25kHz"
+      0x06: "10kHz"
+      0x07: "12.5kHz"
+      0x08: "20kHz"
+      0x09: "25kHz"
+      0x0A: "50kHz"
+      0x0B: "100kHz"
+      0x0C: "500kHz"
+
+    read_tuning_step:
+      cmd: 0x10
+      subcmd: null
+      description: "Read tuning step"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "step"
+            type: "uint8"
+            description: "Channel selection (1-3)"
+            enum: *tuning_step_enum
+
+    set_tuning_step:
+      cmd: 0x10
+      subcmd: null
+      description: "Send tuning step"
+      request:
+        structure:
+          - name: "step"
+            type: "uint8"
+            enum: *tuning_step_enum
+      response: *status_ok_ng
+
+    # ========================================================================
+    # ATTENUATOR (0x11)
+    # ========================================================================
+    attenuator_enum: &attenuator_enum
+      0x00: "attenuator OFF"
+      0x10: "10dB attenuator setting"
+
+    read_attenuator:
+      cmd: 0x11
+      subcmd: null
+      description: "Attenuator OFF"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "step"
+            type: "uint8"
+            description: "Channel selection (1-3)"
+            enum: *attenuator_enum
+
+    send_attenuator_off:
+      cmd: 0x11
+      subcmd: null
+      description: "Attenuator OFF"
+      request:
+        structure:
+          - name: "step"
+            type: "uint8"
+            enum: *attenuator_enum
+      response: *status_ok_ng
+
+    # ========================================================================
+    # VOICE SYNTHESIZER (0x13)
+    # ========================================================================
+    request_speech_all:
+      cmd: 0x13
+      subcmd: 0x00
+      description: "Speech all data (S-meter, frequency, mode)"
+
+    request_speech_freq_smeter:
+      cmd: 0x13
+      subcmd: 0x01
+      description: "Speech frequency and S-meter"
+
+    request_speech_mode:
+      cmd: 0x13
+      subcmd: 0x02
+      description: "Speech mode"
+
+    # ========================================================================
+    # LEVEL SETTINGS (0x14)
+    # ========================================================================
+    read_af_level:
+      cmd: 0x14
+      subcmd: 0x01
+      description: "Read AF level"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "AF_level"
+            type: "uint8_percent"
+
+    set_af_level:
+      cmd: 0x14
+      subcmd: 0x01
+      description: "Set AF level"
+      request:
+        structure:
+          - name: "AF_level"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_rf_gain:
+      cmd: 0x14
+      subcmd: 0x02
+      description: "Read RF gain"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "RF_gain"
+            type: "uint8_percent"
+
+    set_rf_gain:
+      cmd: 0x14
+      subcmd: 0x02
+      description: "Set RF gain"
+      request:
+        structure:
+          - name: "RF_gain"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_squelch:
+      cmd: 0x14
+      subcmd: 0x03
+      description: "Read squelch"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "squelch_level"
+            type: "uint8_percent"
+
+    set_squelch:
+      cmd: 0x14
+      subcmd: 0x03
+      description: "Set squelch"
+      request:
+        structure:
+          - name: "squelch_level"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_nr_level:
+      cmd: 0x14
+      subcmd: 0x06
+      description: "Read NR level"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "nr_level"
+            type: "uint8_percent"
+
+    set_nr_level:
+      cmd: 0x14
+      subcmd: 0x06
+      description: "Set NR level"
+      request:
+        structure:
+          - name: "nr_level"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_pbt1:
+      cmd: 0x14
+      subcmd: 0x07
+      description: "Read PBT1 position"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "pbt1_position"
+            type: "uint8_percent_pos_neg"
+
+    set_pbt1:
+      cmd: 0x14
+      subcmd: 0x07
+      description: "Set PBT1 position"
+      request:
+        structure:
+          - name: "pbt1_position"
+            type: "uint8_percent_pos_neg"
+      response: *status_ok_ng
+
+    read_pbt2:
+      cmd: 0x14
+      subcmd: 0x08
+      description: "Read PBT2 position"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "pbt2_position"
+            type: "uint8_percent_pos_neg"
+
+    set_pbt2:
+      cmd: 0x14
+      subcmd: 0x08
+      description: "Set PBT2 position"
+      request:
+        structure:
+          - name: "pbt2_position"
+            type: "uint8_percent_pos_neg"
+      response: *status_ok_ng
+
+    read_cw_pitch:
+      cmd: 0x14
+      subcmd: 0x09
+      description: "Read CW pitch (5 Hz steps)"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "cw_pitch"
+            type: "uint8_cw_pitch"
+
+    set_cw_pitch:
+      cmd: 0x14
+      subcmd: 0x09
+      description: "Set CW pitch (5 Hz steps)"
+      request:
+        structure:
+          - name: "cw_pitch"
+            type: "uint8_cw_pitch"
+      response: *status_ok_ng
+
+    read_rf_power:
+      cmd: 0x14
+      subcmd: 0x0A
+      description: "Read RF power"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "level_high"
+            type: "uint8_percent"
+
+    set_rf_power:
+      cmd: 0x14
+      subcmd: 0x0A
+      description: "Set RF power"
+      request:
+        structure:
+          - name: "level_high"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_mic_gain:
+      cmd: 0x14
+      subcmd: 0x0B
+      description: "Read MIC gain"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "mic_gain"
+            type: "uint8_percent"
+
+    set_mic_gain:
+      cmd: 0x14
+      subcmd: 0x0B
+      description: "Set MIC gain"
+      request:
+        structure:
+          - name: "mic_gain"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_keying_speed:
+      cmd: 0x14
+      subcmd: 0x0C
+      description: "Read keying speed"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "keying_speed"
+            type: "uint8_keyer_speed"
+
+    set_keying_speed:
+      cmd: 0x14
+      subcmd: 0x0C
+      description: "Set keying speed"
+      request:
+        structure:
+          - name: "keying_speed"
+            type: "uint8_keyer_speed"
+      response: *status_ok_ng
+
+    read_notch_position:
+      cmd: 0x14
+      subcmd: 0x0D
+      description: "Read notch filter position"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "notch_position"
+            type: "uint8_percent_pos_neg"
+
+    set_notch_position:
+      cmd: 0x14
+      subcmd: 0x0D
+      description: "Set notch filter position"
+      request:
+        structure:
+          - name: "notch_position"
+            type: "uint8_percent_pos_neg"
+      response: *status_ok_ng
+
+    read_comp_level:
+      cmd: 0x14
+      subcmd: 0x0E
+      description: "Read COMP level"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "comp_level"
+            type: "uint8_scaled_0_10"
+
+    set_comp_level:
+      cmd: 0x14
+      subcmd: 0x0E
+      description: "Set COMP level"
+      request:
+        structure:
+          - name: "comp_level"
+            type: "uint8_scaled_0_10"
+      response: *status_ok_ng
+
+    read_breakin_delay:
+      cmd: 0x14
+      subcmd: 0x0F
+      description: "Read break-in delay"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "breakin_delay"
+            type: "uint8_breakin_delay"
+
+    set_breakin_delay:
+      cmd: 0x14
+      subcmd: 0x0F
+      description: "Set break-in delay"
+      request:
+        structure:
+          - name: "breakin_delay"
+            type: "uint8_breakin_delay"
+      response: *status_ok_ng
+
+    read_nb_level:
+      cmd: 0x14
+      subcmd: 0x12
+      description: "Read NB level"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "nb_level"
+            type: "uint8_percent"
+
+    set_nb_level:
+      cmd: 0x14
+      subcmd: 0x12
+      description: "Set NB level"
+      request:
+        structure:
+          - name: "nb_level"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_monitor_audio:
+      cmd: 0x14
+      subcmd: 0x15
+      description: "Read monitor audio level"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "monitor_audio_level"
+            type: "uint8_percent"
+
+    set_monitor_audio:
+      cmd: 0x14
+      subcmd: 0x15
+      description: "Set monitor audio level"
+      request:
+        structure:
+          - name: "monitor_audio_level"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_vox_gain:
+      cmd: 0x14
+      subcmd: 0x16
+      description: "Read VOX gain"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "vox_gain"
+            type: "uint8_percent"
+
+    set_vox_gain:
+      cmd: 0x14
+      subcmd: 0x16
+      description: "Set VOX gain"
+      request:
+        structure:
+          - name: "vox_gain"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_anti_vox_gain:
+      cmd: 0x14
+      subcmd: 0x17
+      description: "Read Anti VOX gain"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "anti_vox_gain"
+            type: "uint8_percent"
+
+    set_anti_vox_gain:
+      cmd: 0x14
+      subcmd: 0x17
+      description: "Set Anti VOX gain"
+      request:
+        structure:
+          - name: "anti_vox_gain"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    read_lcd_brightness:
+      cmd: 0x14
+      subcmd: 0x19
+      description: "Read LCD brightness"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "lcd_brightness"
+            type: "uint8_percent"
+
+    set_lcd_brightness:
+      cmd: 0x14
+      subcmd: 0x19
+      description: "Set LCD brightness"
+      request:
+        structure:
+          - name: "lcd_brightness"
+            type: "uint8_percent"
+      response: *status_ok_ng
+
+    # ========================================================================
+    # METER READINGS (0x15)
+    # ========================================================================
+    # read_squelch_status:
+    #   cmd: 0x15
+    #   subcmd: 0x01
+    #   description: "Read squelch status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "squelch_status"
+    #         type: "boolean"
+    #         description: "Squelch status (0x00=Close, 0x01=Open)"
+
+    # read_s_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x02
+    #   description: "Read S-meter (0x00=0, 0x78=74dB, 0xF1=134dB)"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "level_high"
+    #         type:
+    #           size: 1
+    #           description: "S-meter level S0 to S9+60dB encoded as 0x00-0xFF (0x00=0, 0x78=74dB, 0xF1=134dB)"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             reference_points:
+    #               - "0x00 = 0"
+    #               - "0x78 = 74 dB"
+    #               - "0xF1 = 134 dB"
+    #             interpolation: "linear"
+    #             description: "The S-meter scaling is non-linear; this provides a mapping from raw value to dB."
+    #           range:
+    #             min: 0
+    #             max: 255
+
+    # read_varios_squelch_status:
+    #   cmd: 0x15
+    #   subcmd: 0x05
+    #   description: "Read Varios squelch (tone sqelch and so on) status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "varios_squelch_status"
+    #         type: "boolean"
+    #         description: "Varios squelch status (0x00=Close, 0x01=Open)"
+
+    # read_ovf_status:
+    #   cmd: 0x15
+    #   subcmd: 0x07
+    #   description: "Read OVF status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "ovf_status"
+    #         type: "boolean"
+    #         description: "OVF status (0x00=OVF indicator is OFF, 0x01=OVF indicator is ON)"
+
+    # read_po_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x11
+    #   description: "Read Po meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "po_meter"
+    #         type:
+    #           size: 1
+    #           description: "Po-meter level"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             reference_points:
+    #               - "0x00 = 0%"
+    #               - "0x8F = 50%"
+    #               - "0xD5 = 100%"
+    #             interpolation: "linear"
+    #           range:
+    #             min: 0
+    #             max: 255
+
+    # read_swr_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x12
+    #   description: "Read SWR meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "swr_meter"
+    #         description: "SWR meter value (0x00=SWR1.0, 0x30=SWR1.5, 0x50=SWR2.0, 0x78=SWR3.0)"
+    #         enum:
+    #           0x00: "SWR 1.0"
+    #           0x30: "SWR 1.5"
+    #           0x50: "SWR 2.0"
+    #           0x78: "SWR 3.0"
+
+    # read_alc_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x13
+    #   description: "Read ALC meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "alc_meter"
+    #         type:
+    #           size: 1
+    #           description: "ALC-meter level (0x00=0%, 0x78=100%)"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             to_alc: "alc = value / 120 * 100"
+    #             from_alc: "value = alc / 100 * 120"
+    #           range:
+    #             min: 0
+    #             max: 120
+
+    # read_comp_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x14
+    #   description: "Read COMP meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "comp_meter"
+    #         type:
+    #           size: 1
+    #           description: "COMP-meter level"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             reference_points:
+    #               - "0x00 = 0 dB"
+    #               - "0x82 = 15 dB"
+    #               - "0xD2 = 25.5 dB"
+    #             interpolation: "linear"
+    #           range:
+    #             min: 0
+    #             max: 255
+
+    # read_vd_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x15
+    #   description: "Read Vd meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "vd_meter"
+    #         type:
+    #           size: 1
+    #           description: "Vd-meter level"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             - 0x00=0V
+    #             - 0x28=5V
+    #             - 0xF1=30V
+    #           range:
+    #             min: 0
+    #             max: 255
+
+    # read_id_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x16
+    #   description: "Read Id meter"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "id_meter"
+    #         type:
+    #           size: 1
+    #           description: "Id-meter level"
+    #           encoding:
+    #             method: "direct"
+    #           scaling:
+    #             - 0x00=0A
+    #             - 0x79=2A
+    #             - 0xF1=4A"
+    #           range:
+    #             min: 0
+    #             max: 255
+
+    # ========================================================================
+    # FUNCTION SETTINGS (0x16)
+    # ========================================================================
+    # read_preamp:
+    #   cmd: 0x16
+    #   subcmd: 0x02
+    #   description: "Read preamp status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "preamp"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "ON"
+
+    # set_preamp:
+    #   cmd: 0x16
+    #   subcmd: 0x02
+    #   description: "Set preamp (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "preamp"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "ON"
+    #   response: *status_ok_ng
+
+    # read_agc:
+    #   cmd: 0x16
+    #   subcmd: 0x12
+    #   description: "Read AGC time constant"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "agc"
+    #         type: "uint8"
+    #         enum:
+    #           0x01: "FAST"
+    #           0x02: "MID"
+    #           0x03: "SLOW"
+
+    # set_agc:
+    #   cmd: 0x16
+    #   subcmd: 0x12
+    #   description: "Set AGC (0x01=FAST, 0x02=MID, 0x03=SLOW)"
+    #   request:
+    #     structure:
+    #       - name: "agc"
+    #         type: "uint8"
+    #         enum:
+    #           0x01: "FAST"
+    #           0x02: "MID"
+    #           0x03: "SLOW"
+    #   response: *status_ok_ng
+
+    # read_noise_blanker:
+    #   cmd: 0x16
+    #   subcmd: 0x22
+    #   description: "Read noise blanker status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "nb_status"
+    #         type: "boolean"
+
+    # set_noise_blanker:
+    #   cmd: 0x16
+    #   subcmd: 0x22
+    #   description: "Set noise blanker (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "nb_status"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_noise_reduction:
+    #   cmd: 0x16
+    #   subcmd: 0x40
+    #   description: "Read noise reduction status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "nr_status"
+    #         type: "boolean"
+
+    # set_noise_reduction:
+    #   cmd: 0x16
+    #   subcmd: 0x40
+    #   description: "Set noise reduction (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "nr_status"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_auto_notch:
+    #   cmd: 0x16
+    #   subcmd: 0x41
+    #   description: "Read auto notch status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "auto_notch"
+    #         type: "boolean"
+
+    # set_auto_notch:
+    #   cmd: 0x16
+    #   subcmd: 0x41
+    #   description: "Set auto notch (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "auto_notch"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_repeater_tone:
+    #   cmd: 0x16
+    #   subcmd: 0x42
+    #   description: "Read repeater tone status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "repeater_tone"
+    #         type: "boolean"
+
+    # set_repeater_tone:
+    #   cmd: 0x16
+    #   subcmd: 0x42
+    #   description: "Set repeater tone (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "repeater_tone"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_tone_squelch:
+    #   cmd: 0x16
+    #   subcmd: 0x43
+    #   description: "Read tone squelch status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "tone_squelch"
+    #         type: "boolean"
+
+    # set_tone_squelch:
+    #   cmd: 0x16
+    #   subcmd: 0x43
+    #   description: "Set tone squelch (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "tone_squelch"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_compressor:
+    #   cmd: 0x16
+    #   subcmd: 0x44
+    #   description: "Read speech compressor status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "compressor"
+    #         type: "boolean"
+
+    # set_compressor:
+    #   cmd: 0x16
+    #   subcmd: 0x44
+    #   description: "Set speech compressor (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "compressor"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_monitor:
+    #   cmd: 0x16
+    #   subcmd: 0x45
+    #   description: "Read monitor function status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "monitor"
+    #         type: "boolean"
+
+    # set_monitor:
+    #   cmd: 0x16
+    #   subcmd: 0x45
+    #   description: "Set monitor function (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "monitor"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_vox:
+    #   cmd: 0x16
+    #   subcmd: 0x46
+    #   description: "Read VOX status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "vox"
+    #         type: "boolean"
+
+    # set_vox:
+    #   cmd: 0x16
+    #   subcmd: 0x46
+    #   description: "Set VOX (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "vox"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_breakin:
+    #   cmd: 0x16
+    #   subcmd: 0x47
+    #   description: "Read BK-IN function status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "breakin"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "BK-IN OFF"
+    #           0x01: "Semi BK-IN ON"
+    #           0x02: "Full BK-IN ON"
+
+    # set_breakin:
+    #   cmd: 0x16
+    #   subcmd: 0x47
+    #   description: "Set BK-IN (0x00=OFF, 0x01=Semi, 0x02=Full)"
+    #   request:
+    #     structure:
+    #       - name: "breakin"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "BK-IN OFF"
+    #           0x01: "Semi BK-IN ON"
+    #           0x02: "Full BK-IN ON"
+    #   response: *status_ok_ng
+
+    # read_manual_notch:
+    #   cmd: 0x16
+    #   subcmd: 0x48
+    #   description: "Read manual notch status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "manual_notch"
+    #         type: "boolean"
+
+    # set_manual_notch:
+    #   cmd: 0x16
+    #   subcmd: 0x48
+    #   description: "Set manual notch (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "manual_notch"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_afc:
+    #   cmd: 0x16
+    #   subcmd: 0x4A
+    #   description: "Read AFC status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "afc"
+    #         type: "boolean"
+
+    # set_afc:
+    #   cmd: 0x16
+    #   subcmd: 0x4A
+    #   description: "Set AFC (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "afc"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_dtcs:
+    #   cmd: 0x16
+    #   subcmd: 0x4B
+    #   description: "Read DTCS status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "dtcs"
+    #         type: "boolean"
+
+    # set_dtcs:
+    #   cmd: 0x16
+    #   subcmd: 0x4B
+    #   description: "Set DTCS (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "dtcs"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_twin_peak_filter:
+    #   cmd: 0x16
+    #   subcmd: 0x4F
+    #   description: "Read Twin peak filter status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "twin_peak_filter"
+    #         type: "boolean"
+
+    # set_twin_peak_filter:
+    #   cmd: 0x16
+    #   subcmd: 0x4F
+    #   description: "Set Twin peak filter (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "twin_peak_filter"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_dial_lock:
+    #   cmd: 0x16
+    #   subcmd: 0x50
+    #   description: "Read dial lock status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "dial_lock"
+    #         type: "boolean"
+
+    # set_dial_lock:
+    #   cmd: 0x16
+    #   subcmd: 0x50
+    #   description: "Set dial lock (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "dial_lock"
+    #         type: "boolean"
+    #   response: *status_ok_ng
+
+    # read_dsp_if_filter:
+    #   cmd: 0x16
+    #   subcmd: 0x56
+    #   description: "Read DSP IF filter type"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "dsp_if_filter"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "SHARP"
+    #           0x01: "SOFT"
+
+    # set_dsp_if_filter:
+    #   cmd: 0x16
+    #   subcmd: 0x56
+    #   description: "Set DSP IF filter type (0x00=SHARP, 0x01=SOFT)"
+    #   request:
+    #     structure:
+    #       - name: "dsp_if_filter"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "SHARP"
+    #           0x01: "SOFT"
+    #   response: *status_ok_ng
+
+    # read_manual_notch_width:
+    #   cmd: 0x16
+    #   subcmd: 0x57
+    #   description: "Read manual notch width"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "notch_width"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "WIDE"
+    #           0x01: "MID"
+    #           0x02: "NAR"
+
+    # set_manual_notch_width:
+    #   cmd: 0x16
+    #   subcmd: 0x57
+    #   description: "Set manual notch width (0x00=WIDE, 0x01=MID, 0x02=NAR)"
+    #   request:
+    #     structure:
+    #       - name: "notch_width"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "WIDE"
+    #           0x01: "MID"
+    #           0x02: "NAR"
+    #   response: *status_ok_ng
+
+    # read_ssb_tx_bandwidth:
+    #   cmd: 0x16
+    #   subcmd: 0x58
+    #   description: "Read SSB transmit bandwidth"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "ssb_tx_bw"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "WIDE"
+    #           0x01: "MID"
+    #           0x02: "NAR"
+
+    # set_ssb_tx_bandwidth:
+    #   cmd: 0x16
+    #   subcmd: 0x58
+    #   description: "Set SSB transmit bandwidth (0x00=WIDE, 0x01=MID, 0x02=NAR)"
+    #   request:
+    #     structure:
+    #       - name: "ssb_tx_bw"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "WIDE"
+    #           0x01: "MID"
+    #           0x02: "NAR"
+    #   response: *status_ok_ng
+
+    # read_dsql_csql:
+    #   cmd: 0x16
+    #   subcmd: 0x5B
+    #   description: "Read DSQL/CSQL setting (DV mode only)"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "dsql_csql"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "DSQL"
+    #           0x02: "CSQL"
+
+    # set_dsql_csql:
+    #   cmd: 0x16
+    #   subcmd: 0x5B
+    #   description: "Set DSQL/CSQL setting (DV mode only) (0x00=OFF, 0x01=DSQL, 0x02=CSQL)"
+    #   request:
+    #     structure:
+    #       - name: "dsql_csql"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "DSQL"
+    #           0x02: "CSQL"
+    #   response: *status_ok_ng
+
+    # read_gps_tx_mode:
+    #   cmd: 0x16
+    #   subcmd: 0x5C
+    #   description: "Read GPS TX mode"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "gps_tx_mode"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "D-PRS"
+    #           0x02: "NMEA"
+
+    # set_gps_tx_mode:
+    #   cmd: 0x16
+    #   subcmd: 0x5C
+    #   description: "Set GPS TX mode (0x00=OFF, 0x01=D-PRS, 0x02=NMEA)"
+    #   request:
+    #     structure:
+    #       - name: "gps_tx_mode"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "D-PRS"
+    #           0x02: "NMEA"
+    #   response: *status_ok_ng
+
+    # read_tone_squelch_function:
+    #   cmd: 0x16
+    #   subcmd: 0x5D
+    #   description: "Read Tone Squelch function"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "tone_squelch_function"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "TONE"
+    #           0x02: "TSQL"
+    #           0x03: "DTCS"
+    #           0x06: "DTCS (T)"
+    #           0x07: "TONE (T)/DTCS (R)"
+    #           0x08: "DTCS (T)/TSQL (R)"
+    #           0x09: "TONE (T)/TSQL (R)"
+
+    # set_tone_squelch_function:
+    #   cmd: 0x16
+    #   subcmd: 0x5D
+    #   description: "Set Tone Squelch function"
+    #   request:
+    #     structure:
+    #       - name: "tone_squelch_function"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "TONE"
+    #           0x02: "TSQL"
+    #           0x03: "DTCS"
+    #           0x06: "DTCS (T)"
+    #           0x07: "TONE (T)/DTCS (R)"
+    #           0x08: "DTCS (T)/TSQL (R)"
+    #           0x09: "TONE (T)/TSQL (R)"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # CW MESSAGE (0x17)
+    # ========================================================================
+    # send_cw_message:
+    #   cmd: 0x17
+    #   subcmd: null
+    #   description: "Send CW message (up to 30 characters). See p. 17"
+    #   request:
+    #     structure:
+    #       - name: "message"
+    #         type: "char_code"
+    #         description: "CW message using ASCII codes (0x20-0x7A), 0xFF=stop, 0x5E(^)=no space"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # POWER CONTROL (0x18)
+    # ========================================================================
+    # power_off:
+    #   cmd: 0x18
+    #   subcmd: 0x00
+    #   description: "Turn OFF transceiver"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
+
+    # power_on:
+    #   cmd: 0x18
+    #   subcmd: 0x01
+    #   description: "Turn ON transceiver"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # TRANSCEIVER ID (0x19)
+    # ========================================================================
+    # read_transceiver_id:
+    #   cmd: 0x19
+    #   subcmd: 0x00
+    #   description: "Read transceiver ID (returns 0xAC for IC-905)"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "id"
+    #         type: "uint8"
+    #         offset: 0
+    #         length: 1
+    #         description: "Transceiver ID: 0xAC for IC-905"
+
+    # ========================================================================
+    # EXTENDED SETTINGS (0x1A) - Core Operations
+    # ========================================================================
+    # memory_contents:
+    #   cmd: 0x1A
+    #   subcmd: 0x00
+    #   description: "Send/read memory contents. See p. 18"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Memory contents data (See p. 18)"
+    #   response:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Memory contents data"
+
+    # band_stacking_register:
+    #   cmd: 0x1A
+    #   subcmd: 0x01
+    #   description: "Send/read band stacking register contents. See p. 19"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Band stacking register data (See p. 19)"
+    #   response:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Band stacking register data"
+
+    # memory_keyer:
+    #   cmd: 0x1A
+    #   subcmd: 0x02
+    #   description: "Send/read memory keyer contents. See p. 20"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Memory keyer data (See p. 20)"
+    #   response:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "Memory keyer data"
+
+    # if_filter_width:
+    #   cmd: 0x1A
+    #   subcmd: 0x03
+    #   description: "Send/read the selected IF filter width. See p. 20"
+    #   request:
+    #     structure:
+    #       - name: "filter"
+    #         type: "raw"
+    #         description: "IF filter width data (See p. 20)"
+    #   response:
+    #     structure:
+    #       - name: "filter"
+    #         type: "raw"
+    #         description: "IF filter width data"
+
+    # agc_time_constant:
+    #   cmd: 0x1A
+    #   subcmd: 0x04
+    #   description: "Send/read the selected AGC time constant. See p. 20"
+    #   request:
+    #     structure:
+    #       - name: "agc"
+    #         type: "raw"
+    #         description: "AGC time constant data (See p. 20)"
+    #   response:
+    #     structure:
+    #       - name: "agc"
+    #         type: "raw"
+    #         description: "AGC time constant data"
+
+    # data_mode:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x01]
+    #   description: "RX > SSB > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_007:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x02]
+    #   description: "RX > SSB > Send/read RX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_008:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x03]
+    #   description: "RX > SSB > Send/read RX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_009:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x04]
+    #   description: "RX > AM > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_010:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x05]
+    #   description: "RX > AM > Send/read RX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_011:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x06]
+    #   description: "RX > AM > Send/read RX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_012:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x07]
+    #   description: "RX > FM > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_013:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x08]
+    #   description: "RX > FM > Send/read RX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_014:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x09]
+    #   description: "RX > FM > Send/read RX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_015:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x10]
+    #   description: "RX > DV > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_016:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x11]
+    #   description: "RX > DV > Send/read RX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_017:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x12]
+    #   description: "RX > DV > Send/read RX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_018:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x13]
+    #   description: "RX > AM > Send/read RX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_019:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x14]
+    #   description: "RX > AM > Send/read RX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_020:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x15]
+    #   description: "RX > CW > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_021:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x16]
+    #   description: "RX > RTTY > Send/read RX HPF/LPF settings"
+    #   data: "See p. 20"
+
+    # cmd_1a_022:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x17]
+    #   description: "TX > SSB > Send/read TX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_023:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x18]
+    #   description: "TX > SSB > Send/read TX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_024:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x19]
+    #   description: "TX > SSB > Send/read TX bandwidth for wide"
+    #   data: "See p. 20"
+
+    # cmd_1a_025:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x20]
+    #   description: "TX > SSB > Send/read TX bandwidth for mid"
+    #   data: "See p. 20"
+
+    # cmd_1a_026:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x21]
+    #   description: "TX > SSB > Send/read TX bandwidth for narrow"
+    #   data: "See p. 20"
+
+    # cmd_1a_027:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x22]
+    #   description: "TX > SSB-D > Send/read TX bandwidth"
+    #   data: "See p. 20"
+
+    # cmd_1a_028:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x23]
+    #   description: "TX > AM > Send/read TX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_029:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x24]
+    #   description: "TX > AM > Send/read TX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_030:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x25]
+    #   description: "TX > FM > Send/read TX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_031:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x26]
+    #   description: "TX > FM > Send/read TX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_032:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x27]
+    #   description: "TX > DV > Send/read TX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_033:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x28]
+    #   description: "TX > DV > Send/read TX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_034:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x29]
+    #   description: "TX > ATV > Send/read TX Tone (Bass) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_035:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x30]
+    #   description: "TX > ATV > Send/read TX Tone (Treble) level (00=–5 ~ 10=+5)"
+    #   data: "00-10"
+
+    # cmd_1a_036:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x31]
+    #   description: "Send/read the Beep Level setting (0000=Minimum ~ 0255=Maximum)"
+    #   data: "0000-0255"
+
+    # cmd_1a_037:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x32]
+    #   description: "Send/read the Beep Level Limit setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_038:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x33]
+    #   description: "Send/read the Beep (Confirmation) setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_039:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x34]
+    #   description: "Send/read the Home CH Beep setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_040:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x35]
+    #   description: "Send/read the Band Edge Beep setting (00=OFF, 01=ON (Default), 02=ON (User), 03=ON (User) & TX Limit)"
+    #   data: "00-03"
+
+    # cmd_1a_041:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x36]
+    #   description: "Send/read the FM/DV Center Error setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_042:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x37]
+    #   description: "Send/read the Auto Power OFF setting (00=OFF, 01=30 min, 02=60 min, 03=90 min, 04=120 min)"
+    #   data: "00-04"
+
+    # cmd_1a_043:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x38]
+    #   description: "Send/read the TX Delay (144M) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_044:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x39]
+    #   description: "Send/read the TX Delay (430M) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_045:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x40]
+    #   description: "Send/read the TX Delay (1200M) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_046:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x41]
+    #   description: "Send/read the TX Delay (2400M) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_047:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x42]
+    #   description: "Send/read the TX Delay (5600M) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_048:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x43]
+    #   description: "Send/read the TX Delay (10G) setting (00=OFF, 01=10 ms, 02=15 ms, 03=20 ms, 04=25 ms, 05=30 ms)"
+    #   data: "00-05"
+
+    # cmd_1a_049:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x44]
+    #   description: "Send/read the Time-Out Timer setting (00=OFF, 01=3 min, 02=5 min, 03=10 min, 04=20 min, 05=30 min)"
+    #   data: "00-05"
+
+    # cmd_1a_050:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x45]
+    #   description: "Send/read the PTT Lock setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_051:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x46]
+    #   description: "SPLIT > Send/read the Quick SPLIT setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_052:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x47]
+    #   description: "SPLIT > Send/read the SPLIT Offset setting"
+    #   data: "see p. 20"
+
+    # cmd_1a_053:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x48]
+    #   description: "SPLIT > Send/read the SPLIT LOCK setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_054:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x49]
+    #   description: "Send/read the Auto Repeater setting (00=OFF, 01=ON (DUP), 02=ON (DUP,TONE))"
+    #   data: "00-01"
+
+    # cmd_1a_055:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x50]
+    #   description: "Send/read the RTTY Mark Frequency setting (00=1275 Hz, 01=1615 Hz, 02=2125 Hz)"
+    #   data: "00-02"
+
+    # cmd_1a_056:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x51]
+    #   description: "Send/read the RTTY Shift Width setting (00=170 Hz, 01=200 Hz, 02=425 Hz)"
+    #   data: "00-02"
+
+    # cmd_1a_057:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x52]
+    #   description: "Send/read the RTTY Keying Polarity setting (00=Normal, 01=Reverse)"
+    #   data: "00-01"
+
+    # cmd_1a_058:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x53]
+    #   description: "Send/read the ATV Audio Sub Carrier Frequency setting (00=OFF, 01=4.5 MHz, 02=6.0 MHz, 03=6.5 MHz)"
+    #   data: "00-03"
+
+    # cmd_1a_059:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x54]
+    #   description: "SPEECH > Send/read the SPEECH Language setting (00=Japanese, 01=English)"
+    #   data: "00-01"
+
+    # cmd_1a_060:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x55]
+    #   description: "SPEECH > Send/read the Alphabet setting (00=Normal, 01=Phonetic Code)"
+    #   data: "00-01"
+
+    # cmd_1a_061:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x56]
+    #   description: "SPEECH > Send/read the SPEECH Speed setting (00=Slow, 01=Fast)"
+    #   data: "00-01"
+
+    # cmd_1a_062:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x57]
+    #   description: "SPEECH > Send/read the RX Call Sign SPEECH setting (00=OFF, 01=ON (Kerchunk), 02=ON (All))"
+    #   data: "00-02"
+
+    # cmd_1a_063:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x58]
+    #   description: "SPEECH > Send/read the RX>CS SPEECH setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_064:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x59]
+    #   description: "SPEECH > Send/read the MIC Up/Down SPEECH setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_065:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x60]
+    #   description: "SPEECH > Send/read the S-Level SPEECH setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_066:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x61]
+    #   description: "SPEECH > Send/read the MODE SPEECH setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_067:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x62]
+    #   description: "SPEECH > Send/read the SPEECH Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_068:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x63]
+    #   description: "Send/read the [SPEECH/LOCK] Switch setting (00=SPEECH/LOCK, 01=LOCK/SPEECH)"
+    #   data: "00-01"
+
+    # cmd_1a_069:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x64]
+    #   description: "Send/read the Lock Function setting (00=MAIN DIAL, 01=PANEL)"
+    #   data: "00-01"
+
+    # cmd_1a_070:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x65]
+    #   description: "Send/read the Memo Pad Quantity setting (00=5 ch, 01=10 ch)"
+    #   data: "00-01"
+
+    # cmd_1a_071:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x66]
+    #   description: "Send/read the Function of Touch for 1 sec MHz Digits setting (00=Band Stacking Register, 01=1 MHz Step Tuning)"
+    #   data: "00-01"
+
+    # cmd_1a_072:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x67]
+    #   description: "Send/read the MAIN DIAL Auto TS setting (00=OFF, 01=Low, 02=High)"
+    #   data: "00-02"
+
+    # cmd_1a_073:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x68]
+    #   description: "Send/read the MIC Up/Down Speed setting (00=Slow, 01=Fast)"
+    #   data: "00-01"
+
+    # cmd_1a_074:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x69]
+    #   description: "Send/read the AFC Limit setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_075:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x70]
+    #   description: "Send/read the [NOTCH] Switch (SSB) setting (00=Auto, 01=Manual, 02=Auto/Manual)"
+    #   data: "00-02"
+
+    # cmd_1a_076:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x71]
+    #   description: "Send/read the [NOTCH] Switch (AM) setting (00=Auto, 01=Manual, 02=Auto/Manual)"
+    #   data: "00-02"
+
+    # cmd_1a_077:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x72]
+    #   description: "Send/read the SSB/CW Synchronous Tuning setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_078:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x73]
+    #   description: "Send/read the CW Normal Side setting (00=LSB, 01=USB)"
+    #   data: "00-01"
+
+    # cmd_1a_079:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x74]
+    #   description: "Send/read the Power OFF Setting (for Remote Control) setting (00=Shutdown only, 01=Standby/Shutdown)"
+    #   data: "00-01"
+
+    # cmd_1a_080:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x75]
+    #   description: "Front Key Customize > [VOX/BK-IN] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_081:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x76]
+    #   description: "Front Key Customize > [AUTOTUNE/RX>CS/AFC] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_082:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x77]
+    #   description: "Send/read the [A] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_083:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x78]
+    #   description: "Send/read the [B] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_084:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x79]
+    #   description: "Send/read the [up] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_085:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x80]
+    #   description: "Send/read the [down] setting"
+    #   data: "See p. 22"
+
+    # cmd_1a_086:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x81]
+    #   description: "Remote MIC Key > Mode Select > SSB setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_087:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x82]
+    #   description: "Remote MIC Key > Mode Select > CW setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_088:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x83]
+    #   description: "Remote MIC Key > Mode Select > RTTY setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_089:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x84]
+    #   description: "Remote MIC Key > Mode Select > AM setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_090:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x85]
+    #   description: "Remote MIC Key > Mode Select > FM setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_091:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x86]
+    #   description: "Remote MIC Key > Mode Select > DV setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_092:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x87]
+    #   description: "Remote MIC Key > Mode Select > DD setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_093:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x88]
+    #   description: "Remote MIC Key > Mode Select > ATV setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_094:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x89]
+    #   description: "Send/read the Keyboard Type setting (00=Ten-key, 01=Full Keyboard)"
+    #   data: "00-01"
+
+    # cmd_1a_095:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x90]
+    #   description: "Send/read the Full Keyboard Layout setting (00=English, 01=German, 02=French)"
+    #   data: "00-02"
+
+    # cmd_1a_096:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x91]
+    #   description: "Send/read the Screen Capture [POWER] Switch setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_097:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x92]
+    #   description: "Send/read the Screen Capture File Type setting (00=PNG, 01=BMP)"
+    #   data: "00-01"
+
+    # cmd_1a_098:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x93]
+    #   description: "Send/read the REF Adjust setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_099:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x94]
+    #   description: "Send/read the REF Adjust (FINE) setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_100:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x95]
+    #   description: "Send/read the Standby Beep setting (00=OFF, 01=ON, 02=ON (to me:High Tone), 03=ON (to me:Alarm/High Tone))"
+    #   data: "00-03"
+
+    # cmd_1a_101:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x96]
+    #   description: "Send/read the Auto Reply setting (00=OFF, 01=ON, 02=Voice)"
+    #   data: "00-02"
+
+    # cmd_1a_102:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x97]
+    #   description: "Send/read the DV Data TX setting (00=PTT, 01=Auto)"
+    #   data: "00-01"
+
+    # cmd_1a_103:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x98]
+    #   description: "DV Fast Data > Send/read the Fast Data setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_104:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x00, 0x99]
+    #   description: "DV Fast Data > Send/read the GPS Data Speed setting (00=Slow, 01=Fast)"
+    #   data: "00-01"
+
+    # cmd_1a_105:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x00]
+    #   description: "DV Fast Data > Send/read the TX Delay (PTT) setting (00=OFF, 01=1sec ~ 10=10sec)"
+    #   data: "00-10"
+
+    # cmd_1a_106:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x01]
+    #   description: "Send/read the Digital Monitor setting (00=Auto, 01=Digital, 02=Analog)"
+    #   data: "00-02"
+
+    # cmd_1a_107:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x02]
+    #   description: "Send/read the Digital Repeater Set setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_108:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x03]
+    #   description: "Send/read the DV Auto Detect setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_109:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x04]
+    #   description: "Send/read the RX Record (RPT) setting (00=ALL, 01=Latest Only)"
+    #   data: "00-01"
+
+    # cmd_1a_110:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x05]
+    #   description: "Send/read the BK setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_111:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x06]
+    #   description: "Send/read the EMR setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_112:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x07]
+    #   description: "Send/read the EMR AF Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_113:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x08]
+    #   description: "Send/read the DD TX Inhibit (Power ON) setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_114:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x09]
+    #   description: "Send/read the DD Packet Output setting (00=Normal, 01=All)"
+    #   data: "00-01"
+
+    # cmd_1a_115:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x10]
+    #   description: "Send/read the QSO Log setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_116:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x11]
+    #   description: "Send/read the RX History Log setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_117:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x12]
+    #   description: "CSV Format > Send/read the Separator/Decimal setting (00=Separator is “ , ” and Decimal is “ . ”, 01=Separator is “"
+    #   data: "00-02"
+
+    # cmd_1a_118:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x13]
+    #   description: "CSV Format > Send/read the Date setting (00=“yyyy/mm/dd,” 01=“mm/dd/yyyy,” 02=“dd/mm/yyyy”)"
+    #   data: "00-02"
+
+    # cmd_1a_119:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x14]
+    #   description: "Send/read the Speaker MIC AF Output setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_120:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x15]
+    #   description: "Send/read the SP Jack Function setting (00=Speaker, 01=Phone, 02=Phone (L+R))"
+    #   data: "00-02"
+
+    # cmd_1a_121:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x16]
+    #   description: "Send/read the Phones Level setting (00=–15 ~ 30=+15)"
+    #   data: "00-30"
+
+    # cmd_1a_122:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x17]
+    #   description: "USB/AV-OUT AF/IF Output > Send/read the Output Select setting (00=AF, 01=IF)"
+    #   data: "00-01"
+
+    # cmd_1a_123:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x18]
+    #   description: "USB/AV-OUT AF/IF Output > Send/read the AF Output Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_124:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x19]
+    #   description: "USB/AV-OUT AF/IF Output > Send/read the AF SQL setting (00=OFF (Open), 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_125:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x20]
+    #   description: "USB/AV-OUT AF/IF Output > Send/read the AF Beep/Speech Output setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_126:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x21]
+    #   description: "USB/AV-OUT AF/IF Output > Send/read the IF Output Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_127:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x22]
+    #   description: "LAN AF/IF Output > Send/read the Output Select setting (00=AF, 01=IF)"
+    #   data: "00-01"
+
+    # cmd_1a_128:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x23]
+    #   description: "LAN AF/IF Output > Send/read the AF SQL setting (00=OFF (Open), 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_129:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x24]
+    #   description: "MOD Input > Send/read the USB MOD Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_130:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x25]
+    #   description: "MOD Input > Send/read the LAN MOD Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_131:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x26]
+    #   description: "MOD Input > Send/read the DATA OFF MOD setting (00=MIC, 01=USB, 02=MIC, USB, 03=LAN)"
+    #   data: "00-03"
+
+    # cmd_1a_132:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x27]
+    #   description: "MOD Input > Send/read the DATA MOD setting (00=MIC, 01=USB, 02=MIC, USB, 03=LAN)"
+    #   data: "00-03"
+
+    # cmd_1a_133:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x28]
+    #   description: "MOD Input > Send/read the AV-IN MOD Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_134:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x29]
+    #   description: "MOD Input > Send/read the ATV MOD setting (00=MIC, 01=AV-IN, 02=MIC, AV-IN, 03=USB, 04=MIC, USB, 05=LAN)"
+    #   data: "00-05"
+
+    # cmd_1a_135:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x30]
+    #   description: "SEND Output > Send/read the 144M setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_136:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x31]
+    #   description: "SEND Output > Send/read the 430M setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_137:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x32]
+    #   description: "SEND Output > Send/read the 1200M setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_138:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x33]
+    #   description: "SEND Output > Send/read the 2400M setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_139:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x34]
+    #   description: "SEND Output > Send/read the 5600M setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_140:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x35]
+    #   description: "SEND Output > Send/read the 10G setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_141:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x36]
+    #   description: "USB SEND/Keying > Send/read the USB SEND setting (00=OFF, 01=USB (A) DTR, 02=USB (A) RTS, 03=USB (B) DTR, 04=USB (B) RTS)"
+    #   data: "00-04"
+
+    # cmd_1a_142:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x37]
+    #   description: "USB SEND/Keying > Send/read the USB Keying (CW) setting (00=OFF, 01=USB (A) DTR, 02=USB (A) RTS, 03=USB (B) DTR, 04=USB (B) RTS)"
+    #   data: "00-04"
+
+    # cmd_1a_143:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x38]
+    #   description: "USB SEND/Keying > Send/read the USB Keying (RTTY) setting (00=OFF, 01=USB (A) DTR, 02=USB (A) RTS, 03=USB (B) DTR, 04=USB (B) RTS)"
+    #   data: "00-04"
+
+    # cmd_1a_144:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x39]
+    #   description: "External Keypad > Send/read the VOICE setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_145:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x40]
+    #   description: "External Keypad > Send/read the KEYER setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_146:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x41]
+    #   description: "External Keypad > Send/read the RTTY setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_147:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x42]
+    #   description: "CI-V > Send/read the CI-V Transceive setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_148:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x43]
+    #   description: "CI-V > Send/read the CI-V USB Echo Back setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_149:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x44]
+    #   description: "USB (B) Function > Send/read the USB (B) Function setting (00=OFF, 01=RTTY Decode, 02=DV Data, 03=Weather)"
+    #   data: "00-03"
+
+    # cmd_1a_150:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x45]
+    #   description: "USB (B) Function > Send/read the GPS Out setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_151:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x46]
+    #   description: "Send/read the MIC Jack 8V Output setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_152:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x47]
+    #   description: "Send/read the REF OUT setting (00=Auto (CX-10G:ON), 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_153:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x48]
+    #   description: "Send/read the LCD Backlight setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_154:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x49]
+    #   description: "Send/read the LCD Backlight Auto Adjust setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_155:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x50]
+    #   description: "Send/read the Screen Saver setting (00=OFF, 01=1min, 02=2min, 03=5min, 04=15min, 05=30min, 06=60min)"
+    #   data: "00-06"
+
+    # cmd_1a_156:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x51]
+    #   description: "Send/read the Screen OFF [POWER] Switch setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_157:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x52]
+    #   description: "Send/read the Meter Peak Hold setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_158:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x53]
+    #   description: "Send/read the Multi-func. Meter Voltage Display setting (00=DC IN, 01=Vd)"
+    #   data: "00-01"
+
+    # cmd_1a_159:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x54]
+    #   description: "Send/read the Memory Name setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_160:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x55]
+    #   description: "Send/read the Group Name Popup setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_161:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x56]
+    #   description: "Send/read the RX Call Sign Display setting (00=OFF, 01=Normal, 02=RX Hold, 03=Hold)"
+    #   data: "00-03"
+
+    # cmd_1a_162:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x57]
+    #   description: "Send/read the RX Position Indicator setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_163:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x58]
+    #   description: "Send/read the RX Position Display setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_164:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x59]
+    #   description: "Send/read the RX Position Display Timer setting (00=5sec, 01=10sec, 02=15sec, 03=30sec, 04=Hold)"
+    #   data: "00-04"
+
+    # cmd_1a_165:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x60]
+    #   description: "Send/read the Reply Position Display setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_166:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x61]
+    #   description: "Send/read the RX Picture Indicator setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_167:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x62]
+    #   description: "Send/read the DV RX Backlight setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_168:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x63]
+    #   description: "Send/read the TX Call Sign Display setting (00=OFF, 01=Your Call Sign, 02=My Call Sign)"
+    #   data: "00-02"
+
+    # cmd_1a_169:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x64]
+    #   description: "Send/read the Scroll Speed setting (00=Slow, 01=Fast)"
+    #   data: "00-01"
+
+    # cmd_1a_170:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x65]
+    #   description: "Send/read the Opening Message setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_171:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x66]
+    #   description: "Send/read the Power ON Check setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_172:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x67]
+    #   description: "Display Unit > Send/read the Latitude/Longitude setting (00=ddd°mm.mm′, 01=ddd°mm′ss″, 02=ddd.dddd°)"
+    #   data: "00-02"
+
+    # cmd_1a_173:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x68]
+    #   description: "Display Unit > Send/read the Altitude/Distance setting (00=m, 01=ft/mi)"
+    #   data: "00-01"
+
+    # cmd_1a_174:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x69]
+    #   description: "Display Unit > Send/read the Speed setting (00=km/h, 01=mph, 02=knots)"
+    #   data: "00-02"
+
+    # cmd_1a_175:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x70]
+    #   description: "Display Unit > Send/read the Temperature setting (00=°C, 01=°F)"
+    #   data: "00-01"
+
+    # cmd_1a_176:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x71]
+    #   description: "Display Unit > Send/read the Barometric setting (00=hPa, 01=mb, 02=mmHg, 03=inHg)"
+    #   data: "00-03"
+
+    # cmd_1a_177:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x72]
+    #   description: "Display Unit > Send/read the Rainfall setting (00=mm, 01=inch)"
+    #   data: "00-01"
+
+    # cmd_1a_178:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x73]
+    #   description: "Display Unit > Send/read the Wind Speed setting (00=m/s, 01=km/h, 02=mph, 03=knots)"
+    #   data: "00-03"
+
+    # cmd_1a_179:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x74]
+    #   description: "Send/read the Display Language setting (00=English, 01=Japanese)"
+    #   data: "00-01"
+
+    # cmd_1a_180:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x75]
+    #   description: "Send/read the System Language setting (00=English, 01=Japanese)"
+    #   data: "00-01"
+
+    # cmd_1a_181:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x76]
+    #   description: "Date/Time > Send/read the Date setting (20200101=2020/1/1~20991231=2099/12/31)"
+    #   data: "20200101-20991231"
+
+    # cmd_1a_182:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x77]
+    #   description: "Date/Time > Send/read the Time setting (0000=00:00 ~ 2359=23:59)"
+    #   data: "0000-2359"
+
+    # cmd_1a_183:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x78]
+    #   description: "Date/Time > Send/read the NTP Function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_184:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x79]
+    #   description: "Date/Time > Send/read the NTP Server Address setting (Up to 64 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_185:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x80]
+    #   description: "Date/Time > Send/read the GPS Time Correct setting (00=OFF, 01=Auto)"
+    #   data: "00-01"
+
+    # cmd_1a_186:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x81]
+    #   description: "Send/read the UTC Offset setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_187:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x82]
+    #   description: "Import/Export > CSV Format > Send/read the Separator/Decimal setting (00=Separator is “ , ” and Decimal is “ . ”, 01=Separator is “"
+    #   data: "00-02"
+
+    # cmd_1a_188:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x83]
+    #   description: "Import/Export > CSV Format > Send/read the Date setting (00=“yyyy/mm/dd,” 01=“mm/dd/yyyy,” 02=“dd/mm/yyyy”)"
+    #   data: "00-02"
+
+    # cmd_1a_189:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x84]
+    #   description: "Send/read the Scope during Tx (CENTER Type) setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_190:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x85]
+    #   description: "Send/read the Max Hold setting (00=OFF, 01=10s Hold, 02=ON)"
+    #   data: "00-02"
+
+    # cmd_1a_191:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x86]
+    #   description: "Send/read the CENTER Type Display setting (00=Filter Center, 01=Carrier Point Center, 02=Carrier Point Center (Abs. Freq.))"
+    #   data: "00-02"
+
+    # cmd_1a_192:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x87]
+    #   description: "Send/read the Marker Position (FIX Type/SCROLL Type) setting (00=Filter Center, 01=Carrier Point)"
+    #   data: "00-01"
+
+    # cmd_1a_193:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x88]
+    #   description: "Send/read the VBW setting (00=Narrow, 01=Wide)"
+    #   data: "00-01"
+
+    # cmd_1a_194:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x89]
+    #   description: "Send/read the Averaging setting (00=OFF, 01=2, 02=3, 03=4)"
+    #   data: "00-03"
+
+    # cmd_1a_195:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x90]
+    #   description: "Send/read the Waveform Type setting (00=Fill, 01=Fill+Line)"
+    #   data: "00-01"
+
+    # cmd_1a_196:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x91]
+    #   description: "Send/read the Waveform Color (Current) setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_197:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x92]
+    #   description: "Send/read the Waveform Color (Line) setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_198:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x93]
+    #   description: "Send/read the Waveform Color (Max Hold) setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_199:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x94]
+    #   description: "Send/read the Waterfall Display setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_200:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x95]
+    #   description: "Send/read the Waterfall Speed setting (00=Slow, 01=Mid, 02=Fast)"
+    #   data: "00-02"
+
+    # cmd_1a_201:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x96]
+    #   description: "Send/read the Waterfall Size (Expand Screen) setting (00=Small, 01=Mid, 02=Large)"
+    #   data: "00-02"
+
+    # cmd_1a_202:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x97]
+    #   description: "Send/read the Waterfall Peak Color Level setting (00=Grid1 ~ 07=Grid8)"
+    #   data: "00-07"
+
+    # cmd_1a_203:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x98]
+    #   description: "Send/read the Waterfall Marker Auto-hide setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_204:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x01, 0x99]
+    #   description: "Fixed Edges > 144M > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_205:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x00]
+    #   description: "Fixed Edges > 144M > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_206:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x01]
+    #   description: "Fixed Edges > 144M > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_207:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x02]
+    #   description: "Fixed Edges > 144M > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_208:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x03]
+    #   description: "Fixed Edges > 430M > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_209:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x04]
+    #   description: "Fixed Edges > 430M > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_210:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x05]
+    #   description: "Fixed Edges > 430M > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_211:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x06]
+    #   description: "Fixed Edges > 430M > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_212:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x07]
+    #   description: "Fixed Edges > 1200M > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_213:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x08]
+    #   description: "Fixed Edges > 1200M > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_214:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x09]
+    #   description: "Fixed Edges > 1200M > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_215:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x10]
+    #   description: "Fixed Edges > 1200M > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_216:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x11]
+    #   description: "Fixed Edges > 2400M > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_217:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x12]
+    #   description: "Fixed Edges > 2400M > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_218:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x13]
+    #   description: "Fixed Edges > 2400M > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_219:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x14]
+    #   description: "Fixed Edges > 2400M > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_220:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x15]
+    #   description: "Fixed Edges > 5600M > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_221:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x16]
+    #   description: "Fixed Edges > 5600M > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_222:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x17]
+    #   description: "Fixed Edges > 5600M > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_223:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x18]
+    #   description: "Fixed Edges > 5600M > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_224:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x19]
+    #   description: "Fixed Edges > 10G > Send/read the No. 1 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_225:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x20]
+    #   description: "Fixed Edges > 10G > Send/read the No. 2 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_226:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x21]
+    #   description: "Fixed Edges > 10G > Send/read the No. 3 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_227:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x22]
+    #   description: "Fixed Edges > 10G > Send/read the No. 4 setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_228:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x23]
+    #   description: "Send/read the FFT Scope Waveform Type setting (00=Line, 01=Fill)"
+    #   data: "00-01"
+
+    # cmd_1a_229:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x24]
+    #   description: "Send/read the FFT Scope Waveform color setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_230:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x25]
+    #   description: "Send/read the FFT Scope Waterfall Display setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_231:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x26]
+    #   description: "Send/read the Oscilloscope Color setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_232:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x27]
+    #   description: "Send/read the TX LEVEL setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_233:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x28]
+    #   description: "VOICE TX SET > Send/read the Auto Monitor setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_234:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x29]
+    #   description: "VOICE TX SET > Send/read the Repeat Time setting (01=1sec ~ 15=15sec)"
+    #   data: "01-15"
+
+    # cmd_1a_235:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x30]
+    #   description: "Send/read the Number Style setting (00=Normal, 01=190→ANO, 02=190→ANT, 03=90→NO, 04=90→NT)"
+    #   data: "00-04"
+
+    # cmd_1a_236:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x31]
+    #   description: "Send/read the Count Up Trigger setting (01=M1 ~ 08=M8)"
+    #   data: "01-08"
+
+    # cmd_1a_237:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x32]
+    #   description: "Send/read Present Number setting (0001=1 ~ 9999=9999)"
+    #   data: "0001-9999"
+
+    # cmd_1a_238:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x33]
+    #   description: "Send/read Side Tone Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_239:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x34]
+    #   description: "Send/read Side Tone Level Limit setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_240:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x35]
+    #   description: "Send/read Keyer Repeat Time setting (01=1sec ~ 60=60sec)"
+    #   data: "01-60"
+
+    # cmd_1a_241:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x36]
+    #   description: "Send/read Dot/Dash Ratio setting (28=1:1:2.8 ~ 45=1:1:4.5 in 0.1 steps)"
+    #   data: "28-45"
+
+    # cmd_1a_242:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x37]
+    #   description: "Send/read Rise Time setting (00=2ms, 01=4ms, 02=6ms, 03=8ms)"
+    #   data: "00-03"
+
+    # cmd_1a_243:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x38]
+    #   description: "Send/read Paddle Polarity setting (00=Normal, 01=Reverse)"
+    #   data: "00-01"
+
+    # cmd_1a_244:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x39]
+    #   description: "Send/read Key Type setting (00=Straight, 01=Bug, 02=Paddle)"
+    #   data: "00-02"
+
+    # cmd_1a_245:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x40]
+    #   description: "Send/read MIC Up/Down Keyer setting (00=OFF, 01=ON (UP/DOWN), 02=ON (A/B))"
+    #   data: "00-02"
+
+    # cmd_1a_246:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x41]
+    #   description: "Send/read the FFT Scope Averaging setting (00=OFF, 01=2, 02=3, 03=4)"
+    #   data: "00-03"
+
+    # cmd_1a_247:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x42]
+    #   description: "Send/read the FFT Scope Waveform Color setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_248:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x43]
+    #   description: "Send/read the Decode USOS setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_249:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x44]
+    #   description: "Send/read the Decode New Line Code setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_250:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x45]
+    #   description: "Send/read the TX USOS setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_251:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x46]
+    #   description: "Send/read the Font Color (Receive) setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_252:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x47]
+    #   description: "Send/read the Font Color (Transmit) setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_253:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x48]
+    #   description: "Send/read the Decode Log setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_254:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x49]
+    #   description: "Log Set > Send/read the File Type setting (00=Text, 01=HTML)"
+    #   data: "00-01"
+
+    # cmd_1a_255:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x50]
+    #   description: "Log Set > Send/read the Time Stamp setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_256:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x51]
+    #   description: "Log Set > Send/read the Time Stamp (Time) setting (00=Local, 01=UTC)"
+    #   data: "00-01"
+
+    # cmd_1a_257:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x52]
+    #   description: "Log Set > Send/read the Time Stamp (Frequency) setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_258:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x53]
+    #   description: "RECORD > Recorder Set > Send/read the TX REC Audio setting (00=Direct, 01=Monitor)"
+    #   data: "00-01"
+
+    # cmd_1a_259:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x54]
+    #   description: "RECORD > Recorder Set > Send/read the RX REC Condition setting (00=Always, 01=Squelch Auto)"
+    #   data: "00-01"
+
+    # cmd_1a_260:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x55]
+    #   description: "RECORD > Recorder Set > Send/read the File Split setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_261:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x56]
+    #   description: "Send/read the PTT Auto REC setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_262:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x57]
+    #   description: "Send/read the PRE-REC for PTT Auto REC setting (00=OFF, 01=5sec, 02=10sec, 03=15sec)"
+    #   data: "00-03"
+
+    # cmd_1a_263:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x58]
+    #   description: "RECORD > Player Set > Send/read the Skip Time setting (00=3sec, 01=5sec, 02=10sec, 03=30sec)"
+    #   data: "00-03"
+
+    # cmd_1a_264:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x59]
+    #   description: "SCAN > SCAN SET > Send/read the SCAN Speed setting (00=Slow, 01=Fast)"
+    #   data: "00-01"
+
+    # cmd_1a_265:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x60]
+    #   description: "SCAN > SCAN SET > Send/read the SCAN Resume setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_266:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x61]
+    #   description: "SCAN > SCAN SET > Send/read the Pause Timer setting (00=2sec ~ 09=20sec in 2 seconds, 10=HOLD)"
+    #   data: "00-10"
+
+    # cmd_1a_267:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x62]
+    #   description: "SCAN > SCAN SET > Send/read the Resume Timer setting (00=0sec ~ 05=5sec, 06=HOLD)"
+    #   data: "00-06"
+
+    # cmd_1a_268:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x63]
+    #   description: "SCAN > SCAN SET > Send/read the Temporary Skip Timer setting (00=5min, 01=10min, 02=15min, 03=While Scanning, 04=While Powered ON)"
+    #   data: "00-04"
+
+    # cmd_1a_269:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x64]
+    #   description: "SCAN > SCAN SET > Send/read the MAIN DIAL Operation (SCAN) setting (00=OFF, 01=Up/Down)"
+    #   data: "00-01"
+
+    # cmd_1a_270:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x65]
+    #   description: "GPS Set > Send/read the Position Input setting (00=Internal GPS, 01=Manual)"
+    #   data: "00-01"
+
+    # cmd_1a_271:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x66]
+    #   description: "GPS Set > GPS Option > Send/read the SBAS setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_272:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x67]
+    #   description: "GPS Set > GPS Option > Send/read the GLONASS setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_273:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x68]
+    #   description: "GPS Set > GPS Option > Send/read the Satellite Information Out setting (00=GPS/QZSS/GLONASS, 01=GPS Only)"
+    #   data: "00-01"
+
+    # cmd_1a_274:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x69]
+    #   description: "GPS Set > Send/read the Manual Position setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_275:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x70]
+    #   description: "Send/read the GPS TX Mode setting (00=OFF, 01=D-PRS, 02=NMEA)"
+    #   data: "00-02"
+
+    # cmd_1a_276:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x71]
+    #   description: "Send/read the Unproto Address setting (Up to 56 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_277:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x72]
+    #   description: "Send/read the TX Format setting (00=Position, 01=Object, 02=Item, 03=Weather)"
+    #   data: "00-03"
+
+    # cmd_1a_278:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x73]
+    #   description: "Send/read the Symbol setting (00=No.1, 01=No.2, 02=No.3, 03=No.4)"
+    #   data: "00-03"
+
+    # cmd_1a_279:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x74]
+    #   description: "Send/read the Symbol No.1 setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_280:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x75]
+    #   description: "Send/read the Symbol No.2 setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_281:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x76]
+    #   description: "Send/read the Symbol No.3 setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_282:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x77]
+    #   description: "Send/read the Symbol No.4 setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_283:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x78]
+    #   description: "Send/read the SSID setting (00=---, 01=(- 0), 02=-1 ~ 16=-15, 17=-A ~ 42=-Z)"
+    #   data: "00-42"
+
+    # cmd_1a_284:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x79]
+    #   description: "Send/read the Comment setting (00=No.1, 01=No.2, 02=No.3, 03=No.4)"
+    #   data: "00-03"
+
+    # cmd_1a_285:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x80]
+    #   description: "Send/read the Comment No.1 setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_286:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x81]
+    #   description: "Send/read the Comment No.2 setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_287:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x82]
+    #   description: "Send/read the Comment No.3 setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_288:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x83]
+    #   description: "Send/read the Comment No.4 setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_289:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x84]
+    #   description: "Send/read the Time Stamp setting (00=OFF, 01=DHM, 02=HMS)"
+    #   data: "00-02"
+
+    # cmd_1a_290:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x85]
+    #   description: "Send/read the Altitude setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_291:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x86]
+    #   description: "Send/read the Data Extension setting (00=OFF, 01=Course/Speed, 02=Power/Height/Gain/Directivity)"
+    #   data: "00-02"
+
+    # cmd_1a_292:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x87]
+    #   description: "Send/read the Power setting (00=0W, 01=1W, 02=4W, 03=9W, 04=16W, 05=25W, 06=36W, 07=49W, 08=64W, 09=81W)"
+    #   data: "00-09"
+
+    # cmd_1a_293:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x88]
+    #   description: "Send/read the Height setting (00=3m, 01=6m, 02=12m, 03=24m, 04=49m, 05=98m, 06=195m, 07=390m, 08=780m, 09=1561m)"
+    #   data: "00-09"
+
+    # cmd_1a_294:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x89]
+    #   description: "Send/read the Gain setting (00=0dB ~ 09=9dB)"
+    #   data: "00-09"
+
+    # cmd_1a_295:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x90]
+    #   description: "Send/read the Directivity setting (00=Omni, 01=45ºNE, 02=90ºE, 03=135ºSE, 04=180ºS, 05=225ºSW, 06=270ºW, 07=315ºNW, 08=360ºN)"
+    #   data: "00-08"
+
+    # cmd_1a_296:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x91]
+    #   description: "Send/read the Object Name setting (Up to 9 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_297:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x92]
+    #   description: "Send/read the Data Type setting (00=Live Object, 01=Kill Object)"
+    #   data: "00-01"
+
+    # cmd_1a_298:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x93]
+    #   description: "Send/read the Symbol setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_299:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x94]
+    #   description: "Send/read the Comment setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_300:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x95]
+    #   description: "Send/read the Position setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_301:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x96]
+    #   description: "Send/read the Data Extension setting (00=OFF, 01=Course/Speed, 02=Power/Height/Gain/Directivity)"
+    #   data: "00-02"
+
+    # cmd_1a_302:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x97]
+    #   description: "Send/read the Course setting (000=0º ~ 360=360º)"
+    #   data: "000-360"
+
+    # cmd_1a_303:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x98]
+    #   description: "Send/read the Speed setting (0000=0km/h ~ 1850=1850km/h)"
+    #   data: "0000-1850"
+
+    # cmd_1a_304:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x02, 0x99]
+    #   description: "Send/read the Power setting (00=0W, 01=1W, 02=4W, 03=9W, 04=16W, 05=25W, 06=36W, 07=49W, 08=64W, 09=81W)"
+    #   data: "00-09"
+
+    # cmd_1a_305:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x00]
+    #   description: "Send/read the Height setting (00=3m, 01=6m, 02=12m, 03=24m, 04=49m, 05=98m, 06=195m, 07=390m, 08=780m, 09=1561m)"
+    #   data: "00-09"
+
+    # cmd_1a_306:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x01]
+    #   description: "Send/read the Gain setting (00=0dB ~ 09=9dB)"
+    #   data: "00-09"
+
+    # cmd_1a_307:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x02]
+    #   description: "Send/read the Directivity setting (00=Omni, 01=45ºNE, 02=90ºE, 03=135ºSE, 04=180ºS, 05=225ºSW, 06=270ºW, 07=315ºNW, 08=360ºN)"
+    #   data: "00-08"
+
+    # cmd_1a_308:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x03]
+    #   description: "Send/read the SSID setting (00=---, 01=(- 0), 02=-1 ~ 16=-15, 17=-A ~ 42=-Z)"
+    #   data: "00-42"
+
+    # cmd_1a_309:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x04]
+    #   description: "Send/read the Time Stamp setting (00=DHM, 01=HMS)"
+    #   data: "00-01"
+
+    # cmd_1a_310:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x05]
+    #   description: "Send/read the Item Name setting (Up to 9 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_311:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x06]
+    #   description: "Send/read the Data Type setting (00=Live Item, 01=Killed Item)"
+    #   data: "00-01"
+
+    # cmd_1a_312:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x07]
+    #   description: "Send/read the Symbol setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_313:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x08]
+    #   description: "Send/read the Comment setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_314:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x09]
+    #   description: "Send/read the Position setting"
+    #   data: "See p. 21"
+
+    # cmd_1a_315:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x10]
+    #   description: "Send/read the Data Extension setting (00=OFF, 01=Course/Speed, 02=Power/Height/Gain/Directivity)"
+    #   data: "00-02"
+
+    # cmd_1a_316:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x11]
+    #   description: "Send/read the Course setting (000 ~ 360=0º ~ 360º)"
+    #   data: "000-360"
+
+    # cmd_1a_317:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x12]
+    #   description: "Send/read the Speed setting (0000=0km/h ~ 1850=1850km/h)"
+    #   data: "0000-1850"
+
+    # cmd_1a_318:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x13]
+    #   description: "Send/read the Power setting (00=0W, 01=1W, 02=4W, 03=9W, 04=16W, 05=25W, 06=36W, 07=49W, 08=64W, 09=81W)"
+    #   data: "00-09"
+
+    # cmd_1a_319:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x14]
+    #   description: "Send/read the Height setting (00=3m, 01=6m, 02=12m, 03=24m, 04=49m, 05=98m, 06=195m, 07=390m, 08=780m, 09=1561m)"
+    #   data: "00-09"
+
+    # cmd_1a_320:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x15]
+    #   description: "Send/read the Gain setting (00=0dB ~ 09=9dB)"
+    #   data: "00-09"
+
+    # cmd_1a_321:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x16]
+    #   description: "Send/read the Directivity setting (00=Omni, 01=45ºNE, 02=90ºE, 03=135ºSE, 04=180ºS, 05=225ºSW, 06=270ºW, 07=315ºNW, 08=360ºN)"
+    #   data: "00-08"
+
+    # cmd_1a_322:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x17]
+    #   description: "Send/read the SSID setting (00=---, 01=(- 0), 02=-1 ~ 16=-15, 17=-A ~ 42=-Z)"
+    #   data: "00-42"
+
+    # cmd_1a_323:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x18]
+    #   description: "Send/read the Symbol setting (2 characters)"
+    #   data: "See p. 19 and 21"
+
+    # cmd_1a_324:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x19]
+    #   description: "Send/read the SSID setting (00=---, 01=(- 0), 02=-1 ~ 16=-15, 17=-A ~ 42=-Z)"
+    #   data: "00-42"
+
+    # cmd_1a_325:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x20]
+    #   description: "Send/read the Comment setting (Up to 43 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_326:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x21]
+    #   description: "Send/read the Time Stamp setting (00=OFF, 01=DHM, 02=HMS)"
+    #   data: "00-02"
+
+    # cmd_1a_327:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x22]
+    #   description: "GPS Sentence > Send/read the RMC setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_328:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x23]
+    #   description: "GPS Sentence > Send/read the GGA setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_329:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x24]
+    #   description: "GPS Sentence > Send/read the GLL setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_330:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x25]
+    #   description: "GPS Sentence > Send/read the GSA setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_331:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x26]
+    #   description: "GPS Sentence > Send/read the VTG setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_332:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x27]
+    #   description: "GPS Sentence > Send/read the GSV setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_333:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x28]
+    #   description: "Send/read the GPS Message setting (Up to 20 characters)"
+    #   data: "See p. 19"
+
+    # cmd_1a_334:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x29]
+    #   description: "GPS Alarm > Send/read the Alarm Area (Group) setting"
+    #   data: "See p. 19"
+
+    # cmd_1a_335:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x30]
+    #   description: "GPS Alarm > Send/read the Alarm Area (RX/Memory) setting (00=Limited, 01=Extended, 02=Both)"
+    #   data: "00-02"
+
+    # cmd_1a_336:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x31]
+    #   description: "Send/read the GPS Auto TX setting (00=OFF, 01=30sec, 02=1min, 03=3min, 04=5min, 05=10min, 06=30min)"
+    #   data: "00-06"
+
+    # cmd_1a_337:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x32]
+    #   description: "DTMF SET > Send/read the DTMF Speed setting (00=100ms, 01=200ms, 02=300ms, 03=500ms)"
+    #   data: "00-03"
+
+    # cmd_1a_338:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x33]
+    #   description: "VIDEO SET > Send/read the AV-IN Video Input Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_339:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x34]
+    #   description: "VIDEO SET > Send/read the AV-OUT Video Output Level setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_340:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x35]
+    #   description: "VIDEO SET > Send/read the View Mode setting (00=Normal, 01=Full, 02=Zoom)"
+    #   data: "00-02"
+
+    # cmd_1a_341:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x36]
+    #   description: "NB LEVEL > Send/read the NB LEVEL setting (0000=0% ~ 0255=100%)"
+    #   data: "0000-0255"
+
+    # cmd_1a_342:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x37]
+    #   description: "NB DEPTH > Send/read the NB DEPTH setting (00=1 ~ 09=10)"
+    #   data: "00-09"
+
+    # cmd_1a_343:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x38]
+    #   description: "NB WIDTH > Send/read the NB WIDTH setting (0000=1 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_344:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x39]
+    #   description: "VOX DELAY > Send/read the VOX DELAY setting (00=0.0s ~ 20=2.0s in 0.1s steps)"
+    #   data: "00-20"
+
+    # cmd_1a_345:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x40]
+    #   description: "VOICE DELAY > Send/read the VOICE DELAY setting (00=OFF, 01=SHORT, 02=MID, 03=LONG)"
+    #   data: "00-03"
+
+    # cmd_1a_346:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x41]
+    #   description: "TX PWR LIMIT (144M) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_347:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x42]
+    #   description: "TX PWR LIMIT (144M) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_348:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x43]
+    #   description: "TX PWR LIMIT (430M) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_349:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x44]
+    #   description: "TX PWR LIMIT (430M) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_350:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x45]
+    #   description: "TX PWR LIMIT (1200M) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_351:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x46]
+    #   description: "TX PWR LIMIT (1200M) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_352:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x47]
+    #   description: "TX PWR LIMIT (2400M) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_353:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x48]
+    #   description: "TX PWR LIMIT (2400M) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_354:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x49]
+    #   description: "TX PWR LIMIT (5600M) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_355:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x50]
+    #   description: "TX PWR LIMIT (5600M) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_356:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x51]
+    #   description: "TX PWR LIMIT (10G) function setting (00=OFF, 01=ON)"
+    #   data: "00-01"
+
+    # cmd_1a_357:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x52]
+    #   description: "TX PWR LIMIT (10G) setting (0000=0 ~ 0255=100)"
+    #   data: "0000-0255"
+
+    # cmd_1a_358:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x53]
+    #   description: "Call Sign Display/ Name Display setting (00=Call Sign Display, 01=Name Display)"
+    #   data: "00-01"
+
+    # cmd_1a_359:
+    #   cmd: 0x1A
+    #   subcmd: [0x05, 0x03, 0x54]
+    #   description: "GPS Position > Send/read the Compass Direction setting (00=Heading Up, 01=North Up, 02=South Up)"
+    #   data: "00-02"
+
+    # data_mode:
+    #   cmd: 0x1A
+    #   subcmd: 0x06
+    #   description: "Send/read the DATA mode setting. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "mode"
+    #         type: "raw"
+    #         description: "DATA mode setting (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "mode"
+    #         type: "raw"
+    #         description: "DATA mode setting"
+
+    # ntp_server_access:
+    #   cmd: 0x1A
+    #   subcmd: 0x07
+    #   description: "Send/read the NTP server access"
+    #   request:
+    #     structure:
+    #       - name: "access"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Terminate"
+    #           0x01: "Initiate"
+    #   response: *status_ok_ng
+
+    # read_ntp_result:
+    #   cmd: 0x1A
+    #   subcmd: 0x08
+    #   description: "Read NTP server access result"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "result"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Accessing, or have not accessed after Power ON"
+    #           0x01: "Succeeded"
+    #           0x02: "Failed"
+
+    # read_ovf_indicator:
+    #   cmd: 0x1A
+    #   subcmd: 0x09
+    #   description: "Read the OVF indicator status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "status"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+
+    # share_pictures:
+    #   cmd: 0x1A
+    #   subcmd: 0x0A
+    #   description: "Send/read the Share Pictures function status"
+    #   request:
+    #     structure:
+    #       - name: "status"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "OFF"
+    #           0x01: "ON"
+    #           0x02: "ON (Repeat)"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # TONE/DTCS SETTINGS (0x1B)
+    # ========================================================================
+    # repeater_tone_frequency:
+    #   cmd: 0x1B
+    #   subcmd: 0x00
+    #   description: "Send/read the Repeater tone frequency. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "Tone frequency data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "Tone frequency data"
+
+    # tsql_tone_frequency:
+    #   cmd: 0x1B
+    #   subcmd: 0x01
+    #   description: "Send/read the TSQL tone frequency. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "TSQL tone frequency data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "TSQL tone frequency data"
+
+    # dtcs_code:
+    #   cmd: 0x1B
+    #   subcmd: 0x02
+    #   description: "Send/read the DTCS code and polarity. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "code"
+    #         type: "raw"
+    #         description: "DTCS code and polarity (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "code"
+    #         type: "raw"
+    #         description: "DTCS code and polarity"
+
+    # csql_code:
+    #   cmd: 0x1B
+    #   subcmd: 0x07
+    #   description: "Send/read the CSQL code (DV mode). See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "code"
+    #         type: "raw"
+    #         description: "CSQL code data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "code"
+    #         type: "raw"
+    #         description: "CSQL code data"
+
+    # ========================================================================
+    # TRANSCEIVER STATUS (0x1C)
+    # ========================================================================
+    # transceiver_status:
+    #   cmd: 0x1C
+    #   subcmd: 0x00
+    #   description: "Send/read the transceiver's status"
+    #   request:
+    #     structure:
+    #       - name: "status"
+    #         type: "boolean"
+    #         description: "0x00=RX, 0x01=TX"
+    #   response:
+    #     structure:
+    #       - name: "status"
+    #         type: "boolean"
+    #         description: "0x00=RX, 0x01=TX"
+
+    # transmit_frequency_monitor:
+    #   cmd: 0x1C
+    #   subcmd: 0x02
+    #   description: "Send/read the Transmit frequency monitor (XFC)"
+    #   request:
+    #     structure:
+    #       - name: "xfc"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # read_transmit_frequency:
+    #   cmd: 0x1C
+    #   subcmd: 0x03
+    #   description: "Read the transmit frequency. See p. 16"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "bcd5"
+    #         description: "Transmit frequency in BCD (5 bytes, 10 digits)"
+
+    # ========================================================================
+    # TX FREQUENCY BAND (0x1E)
+    # ========================================================================
+    # read_tx_band_count:
+    #   cmd: 0x1E
+    #   subcmd: 0x00
+    #   description: "Read number of available TX frequency bands"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "count"
+    #         type: "uint8"
+    #         description: "Number of available TX bands"
+
+    # read_tx_band_edges:
+    #   cmd: 0x1E
+    #   subcmd: 0x01
+    #   description: "Read TX band edge frequencies. See p. 16"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "edges"
+    #         type: "raw"
+    #         description: "TX band edge frequencies (See p. 16)"
+
+    # read_user_tx_band_count:
+    #   cmd: 0x1E
+    #   subcmd: 0x02
+    #   description: "Read number of user-set TX frequency bands"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "count"
+    #         type: "uint8"
+    #         description: "Number of user-set TX bands"
+
+    # user_tx_band_edges:
+    #   cmd: 0x1E
+    #   subcmd: 0x03
+    #   description: "Send/read the user-set TX band edge frequencies. See p. 16"
+    #   request:
+    #     structure:
+    #       - name: "edges"
+    #         type: "raw"
+    #         description: "User TX band edges (See p. 16)"
+    #   response:
+    #     structure:
+    #       - name: "edges"
+    #         type: "raw"
+    #         description: "User TX band edges"
+
+    # ========================================================================
+    # MY STATION (0x1F)
+    # ========================================================================
+    # my_call_sign:
+    #   cmd: 0x1F
+    #   subcmd: 0x00
+    #   description: "SET > My Station > Send/read the My Call Sign setting. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "callsign"
+    #         type: "raw"
+    #         description: "Call sign data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "callsign"
+    #         type: "raw"
+    #         description: "Call sign data"
+
+    # ur_r1_r2_setting:
+    #   cmd: 0x1F
+    #   subcmd: 0x01
+    #   description: "CS > Send/read the UR, R1, R2 setting. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "UR, R1, R2 data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "UR, R1, R2 data"
+
+    # tx_message:
+    #   cmd: 0x1F
+    #   subcmd: 0x02
+    #   description: "SET > My Station > Send/read the TX Message setting. See p. 23"
+    #   request:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "TX Message data (See p. 23)"
+    #   response:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "TX Message data"
+
+    # ========================================================================
+    # DV OPERATIONS (0x20)
+    # ========================================================================
+    # auto_dv_rx_callsigns:
+    #   cmd: 0x20
+    #   subcmd: [0x00, 0x00]
+    #   description: "Send/read the Auto DV RX Call signs output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # output_dv_rx_callsigns:
+    #   cmd: 0x20
+    #   subcmd: [0x00, 0x01]
+    #   description: "Output DV RX Call signs for transceive. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "callsigns"
+    #         type: "raw"
+    #         description: "DV RX Call signs data (See p. 24)"
+
+    # read_auto_dv_rx_callsigns:
+    #   cmd: 0x20
+    #   subcmd: [0x00, 0x02]
+    #   description: "Read Auto DV RX Call signs. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "callsigns"
+    #         type: "raw"
+    #         description: "Auto DV RX Call signs (See p. 24)"
+
+    # auto_dv_rx_message:
+    #   cmd: 0x20
+    #   subcmd: [0x01, 0x00]
+    #   description: "Send/read the Auto DV RX message output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # output_dv_rx_message:
+    #   cmd: 0x20
+    #   subcmd: [0x01, 0x01]
+    #   description: "Output DV RX message for transceive. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "DV RX message (See p. 24)"
+
+    # read_auto_dv_rx_message:
+    #   cmd: 0x20
+    #   subcmd: [0x01, 0x02]
+    #   description: "Read Auto DV RX message. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "Auto DV RX message (See p. 24)"
+
+    # auto_dv_rx_status:
+    #   cmd: 0x20
+    #   subcmd: [0x02, 0x00]
+    #   description: "Send/read the Auto DV RX status output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # output_dv_rx_status:
+    #   cmd: 0x20
+    #   subcmd: [0x02, 0x01]
+    #   description: "Output DV RX status for transceive. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "status"
+    #         type: "raw"
+    #         description: "DV RX status (See p. 24)"
+
+    # read_auto_dv_rx_status:
+    #   cmd: 0x20
+    #   subcmd: [0x02, 0x02]
+    #   description: "Read Auto DV RX status. See p. 24"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "status"
+    #         type: "raw"
+    #         description: "Auto DV RX status (See p. 24)"
+
+    # auto_dv_rx_gps_dprs:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x00]
+    #   description: "Send/read the Auto DV RX GPS/D-PRS data output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # output_dv_rx_gps_position:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x01, 0x00]
+    #   description: "Output DV RX GPS/D-PRS Position for transceive. See p. 25"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "position"
+    #         type: "raw"
+    #         description: "GPS Position data (See p. 25)"
+
+    # output_dv_rx_dprs_object:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x01, 0x01]
+    #   description: "Output DV RX D-PRS Object status for transceive. See p. 25"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "object"
+    #         type: "raw"
+    #         description: "D-PRS Object (See p. 25)"
+
+    # output_dv_rx_dprs_item:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x01, 0x02]
+    #   description: "Output DV RX D-PRS Item status for transceive. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "item"
+    #         type: "raw"
+    #         description: "D-PRS Item (See p. 26)"
+
+    # output_dv_rx_dprs_weather:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x01, 0x03]
+    #   description: "Output DV RX D-PRS Weather status for transceive. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "weather"
+    #         type: "raw"
+    #         description: "D-PRS Weather (See p. 26)"
+
+    # read_auto_dv_rx_gps_position:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x02, 0x00]
+    #   description: "Read Auto DV RX GPS/D-PRS Position status. See p. 25"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "position"
+    #         type: "raw"
+    #         description: "GPS Position status (See p. 25)"
+
+    # read_auto_dv_rx_dprs_object:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x02, 0x01]
+    #   description: "Read Auto DV RX D-PRS Object status. See p. 25"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "object"
+    #         type: "raw"
+    #         description: "D-PRS Object status (See p. 25)"
+
+    # read_auto_dv_rx_dprs_item:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x02, 0x02]
+    #   description: "Read Auto DV RX D-PRS Item status. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "item"
+    #         type: "raw"
+    #         description: "D-PRS Item status (See p. 26)"
+
+    # read_auto_dv_rx_dprs_weather:
+    #   cmd: 0x20
+    #   subcmd: [0x03, 0x02, 0x03]
+    #   description: "Read Auto DV RX D-PRS Weather status. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "weather"
+    #         type: "raw"
+    #         description: "D-PRS Weather status (See p. 26)"
+
+    # auto_dv_rx_dprs_message:
+    #   cmd: 0x20
+    #   subcmd: [0x04, 0x00]
+    #   description: "Send/read Auto DV RX GPS/D-PRS message output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # output_dv_rx_dprs_message:
+    #   cmd: 0x20
+    #   subcmd: [0x04, 0x01]
+    #   description: "Output DV RX D-PRS message for transceive. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "D-PRS message (See p. 26)"
+
+    # read_auto_dv_rx_dprs_message:
+    #   cmd: 0x20
+    #   subcmd: [0x04, 0x02]
+    #   description: "Read Auto DV RX D-PRS message status. See p. 26"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "message"
+    #         type: "raw"
+    #         description: "D-PRS message status (See p. 26)"
+
+    # ========================================================================
+    # RIT FREQUENCY (0x21)
+    # ========================================================================
+    # rit_frequency:
+    #   cmd: 0x21
+    #   subcmd: 0x00
+    #   description: "Send/read the RIT frequency. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "RIT frequency (See p. 27)"
+    #   response:
+    #     structure:
+    #       - name: "frequency"
+    #         type: "raw"
+    #         description: "RIT frequency"
+
+    # rit_setting:
+    #   cmd: 0x21
+    #   subcmd: 0x01
+    #   description: "Send/read the RIT setting"
+    #   request:
+    #     structure:
+    #       - name: "rit"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # delta_tx_setting:
+    #   cmd: 0x21
+    #   subcmd: 0x02
+    #   description: "Send/read the ∂TX setting"
+    #   request:
+    #     structure:
+    #       - name: "delta_tx"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # DV DATA (0x22)
+    # ========================================================================
+    # set_dv_tx_data:
+    #   cmd: 0x22
+    #   subcmd: 0x00
+    #   description: "Set the DV TX data (Up to 30 bytes). See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "DV TX data (up to 30 bytes, See p. 27)"
+    #   response: *status_ok_ng
+
+    # auto_dv_rx_data_output:
+    #   cmd: 0x22
+    #   subcmd: [0x01, 0x00]
+    #   description: "Set the Auto DV RX data output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # set_dv_rx_data:
+    #   cmd: 0x22
+    #   subcmd: 0x01
+    #   description: "Set the DV RX data for transceive. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "data"
+    #         type: "raw"
+    #         description: "DV RX data (See p. 27)"
+    #   response: *status_ok_ng
+
+    # dv_data_tx_setting:
+    #   cmd: 0x22
+    #   subcmd: 0x02
+    #   description: "SET > DV/DD Set > Send/read the DV Data TX setting"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "PTT"
+    #           0x01: "Auto"
+    #   response: *status_ok_ng
+
+    # dv_fast_data:
+    #   cmd: 0x22
+    #   subcmd: 0x03
+    #   description: "SET > DV/DD Set > DV Fast Data > Send/read the Fast Data setting"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # gps_data_speed:
+    #   cmd: 0x22
+    #   subcmd: 0x04
+    #   description: "SET > DV/DD Set > DV Fast Data > Send/read the GPS Data Speed setting"
+    #   request:
+    #     structure:
+    #       - name: "speed"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Slow"
+    #           0x01: "Fast"
+    #   response: *status_ok_ng
+
+    # tx_delay_ptt:
+    #   cmd: 0x22
+    #   subcmd: 0x05
+    #   description: "SET > DV/DD Set > DV Fast Data > Send/read the TX Delay (PTT) setting"
+    #   request:
+    #     structure:
+    #       - name: "delay"
+    #         type: "uint8"
+    #         description: "0x00=OFF, 0x01=1sec ~ 0x10=10sec"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # POSITION STATUS (0x23)
+    # ========================================================================
+    # read_position_status:
+    #   cmd: 0x23
+    #   subcmd: 0x00
+    #   description: "Read the position status. See p. 27"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "position"
+    #         type: "raw"
+    #         description: "Position status data (See p. 27)"
+
+    # position_input:
+    #   cmd: 0x23
+    #   subcmd: 0x01
+    #   description: "GPS > GPS Set > Send/read the Position Input setting"
+    #   request:
+    #     structure:
+    #       - name: "input"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Internal GPS"
+    #           0x01: "Manual"
+    #   response: *status_ok_ng
+
+    # manual_position:
+    #   cmd: 0x23
+    #   subcmd: 0x02
+    #   description: "GPS > GPS Set > Send/read the Manual Position setting. See p. 21"
+    #   request:
+    #     structure:
+    #       - name: "position"
+    #         type: "raw"
+    #         description: "Manual position data (See p. 21)"
+    #   response:
+    #     structure:
+    #       - name: "position"
+    #         type: "raw"
+    #         description: "Manual position data"
+
+    # ========================================================================
+    # TX OUTPUT POWER (0x24)
+    # ========================================================================
+    # tx_output_power_setting:
+    #   cmd: 0x24
+    #   subcmd: [0x00, 0x00]
+    #   description: "Send/read TX output power setting"
+    #   request:
+    #     structure:
+    #       - name: "power"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # tx_output_power_transceive:
+    #   cmd: 0x24
+    #   subcmd: [0x00, 0x01]
+    #   description: "Set the TX output power for transceive"
+    #   request:
+    #     structure:
+    #       - name: "power"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # VFO FREQUENCY (0x25)
+    # ========================================================================
+    # get_VFO_frequency:
+    #   cmd: 0x25
+    #   subcmd: null
+    #   description: "Read selected/unselected VFO frequency. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         default: 0x00
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO"
+    #   response:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         offset: 0
+    #         length: 1
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO (echo)"
+    #       - name: "frequency"
+    #         type: "bcd5"
+    #         offset: 1
+    #         length: 5
+    #         description: "VFO frequency in BCD (10 digits)"
+
+    # send_VFO_frequency:
+    #   cmd: 0x25
+    #   subcmd: null
+    #   description: "Send VFO frequency. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         default: 0x00
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO"
+    #       - name: "frequency"
+    #         type: "bcd5"
+    #         description: "VFO frequency in BCD (5 bytes, 10 digits)"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # VFO MODE (0x26)
+    # ========================================================================
+    # get_VFO_mode:
+    #   cmd: 0x26
+    #   subcmd: null
+    #   description: "Read selected/unselected VFO's operating mode and filter. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         default: 0x00
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO"
+    #   response:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO (echo)"
+    #       - name: "mode"
+    #         type: "raw"
+    #         description: "Operating mode and filter (See p. 27)"
+
+    # send_VFO_mode:
+    #   cmd: 0x26
+    #   subcmd: null
+    #   description: "Send VFO's operating mode and filter. See p. 27"
+    #   request:
+    #     structure:
+    #       - name: "vfo_select"
+    #         type: "uint8"
+    #         default: 0x00
+    #         description: "0x00=Selected VFO, 0x01=Unselected VFO"
+    #       - name: "mode"
+    #         type: "raw"
+    #         description: "Operating mode and filter (See p. 27)"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # SCOPE OPERATIONS (0x27)
+    # ========================================================================
+    # read_scope_waveform_data:
+    #   cmd: 0x27
+    #   subcmd: 0x00
+    #   description: "Read the Scope waveform data. See p. 28. Only outputs when Scope ON/OFF (cmd 0x27 0x10) and wave data output (cmd 0x27 0x11) are ON"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "waveform"
+    #         type: "raw"
+    #         description: "Scope waveform data (See p. 28)"
+
+    # scope_on_off:
+    #   cmd: 0x27
+    #   subcmd: 0x10
+    #   description: "Send/read the Scope ON/OFF status"
+    #   request:
+    #     structure:
+    #       - name: "status"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # scope_wave_data_output:
+    #   cmd: 0x27
+    #   subcmd: 0x11
+    #   description: "Send/read the Scope wave data output"
+    #   request:
+    #     structure:
+    #       - name: "output"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # scope_main_sub:
+    #   cmd: 0x27
+    #   subcmd: 0x12
+    #   description: "Send/read the Main or Sub scope setting"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Main (fixed)"
+    #   response: *status_ok_ng
+
+    # scope_single_dual:
+    #   cmd: 0x27
+    #   subcmd: 0x13
+    #   description: "Send/read the Single/Dual scope setting"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Single (fixed)"
+    #   response: *status_ok_ng
+
+    # scope_mode:
+    #   cmd: 0x27
+    #   subcmd: 0x14
+    #   description: "Send/read the Scope Center/Fixed/SCROLL-C/SCROLL-F mode setting"
+    #   request:
+    #     structure:
+    #       - name: "mode"
+    #         type: "uint16"
+    #         enum:
+    #           0x0000: "CENTER mode"
+    #           0x0001: "FIX mode"
+    #           0x0002: "SCROLL-C mode"
+    #           0x0003: "SCROLL-F mode"
+    #   response: *status_ok_ng
+
+    # scope_span:
+    #   cmd: 0x27
+    #   subcmd: 0x15
+    #   description: "Send/read the Span setting in Center mode or SCROLL-C mode. See p. 28"
+    #   request:
+    #     structure:
+    #       - name: "span"
+    #         type: "raw"
+    #         description: "Span setting (See p. 28)"
+    #   response:
+    #     structure:
+    #       - name: "span"
+    #         type: "raw"
+    #         description: "Span setting"
+
+    # scope_edge_number:
+    #   cmd: 0x27
+    #   subcmd: 0x16
+    #   description: "SCOPE > SCOPE SET > Send/read the Scope Edge Number setting in Fixed mode or SCROLL-F mode"
+    #   request:
+    #     structure:
+    #       - name: "edge"
+    #         type: "uint16"
+    #         enum:
+    #           0x0001: "Fixed Edges No.1"
+    #           0x0002: "Fixed Edges No.2"
+    #           0x0003: "Fixed Edges No.3"
+    #           0x0004: "Fixed Edges No.4"
+    #   response: *status_ok_ng
+
+    # scope_hold:
+    #   cmd: 0x27
+    #   subcmd: 0x17
+    #   description: "Send/read the Scope Hold function ON/OFF status"
+    #   request:
+    #     structure:
+    #       - name: "hold"
+    #         type: "uint16"
+    #         enum:
+    #           0x0000: "OFF"
+    #           0x0001: "ON"
+    #   response: *status_ok_ng
+
+    # scope_reference_level:
+    #   cmd: 0x27
+    #   subcmd: 0x19
+    #   description: "Send/read the Scope Reference level setting. See p. 28"
+    #   request:
+    #     structure:
+    #       - name: "level"
+    #         type: "raw"
+    #         description: "Reference level (See p. 28)"
+    #   response:
+    #     structure:
+    #       - name: "level"
+    #         type: "raw"
+    #         description: "Reference level"
+
+    # scope_sweep_speed:
+    #   cmd: 0x27
+    #   subcmd: 0x1A
+    #   description: "Send/read the Sweep speed setting"
+    #   request:
+    #     structure:
+    #       - name: "speed"
+    #         type: "uint16"
+    #         enum:
+    #           0x0000: "FAST"
+    #           0x0001: "MID"
+    #           0x0002: "SLOW"
+    #   response: *status_ok_ng
+
+    # scope_during_tx:
+    #   cmd: 0x27
+    #   subcmd: 0x1B
+    #   description: "SCOPE > SCOPE SET > Send/read the Scope during Tx (CENTER TYPE) setting"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # scope_center_type_display:
+    #   cmd: 0x27
+    #   subcmd: 0x1C
+    #   description: "SCOPE > SCOPE SET > Send/read the CENTER Type Display setting"
+    #   request:
+    #     structure:
+    #       - name: "type"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Filter Center"
+    #           0x01: "Carrier Point Center"
+    #           0x02: "Carrier Point Center (Abs. Freq.)"
+    #   response: *status_ok_ng
+
+    # scope_vbw:
+    #   cmd: 0x27
+    #   subcmd: 0x1D
+    #   description: "Send/read the Scope VBW setting"
+    #   request:
+    #     structure:
+    #       - name: "vbw"
+    #         type: "uint16"
+    #         enum:
+    #           0x0000: "NAR"
+    #           0x0001: "WIDE"
+    #   response: *status_ok_ng
+
+    # scope_fixed_edge_frequencies:
+    #   cmd: 0x27
+    #   subcmd: 0x1E
+    #   description: "Send/read the Scope Fixed Edge frequencies. See p. 29"
+    #   request:
+    #     structure:
+    #       - name: "frequencies"
+    #         type: "raw"
+    #         description: "Fixed edge frequencies (See p. 29)"
+    #   response:
+    #     structure:
+    #       - name: "frequencies"
+    #         type: "raw"
+    #         description: "Fixed edge frequencies"
+
+    # scope_marker_position:
+    #   cmd: 0x27
+    #   subcmd: 0x20
+    #   description: "SCOPE > SCOPE SET > Send/read Marker Position (FIX Type/SCROLL Type) setting"
+    #   request:
+    #     structure:
+    #       - name: "position"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Filter Center"
+    #           0x01: "Carrier Point"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # VOICE TX MEMORY (0x28)
+    # ========================================================================
+    # voice_tx_memory:
+    #   cmd: 0x28
+    #   subcmd: 0x00
+    #   description: "Transmit the Voice TX Memory"
+    #   request:
+    #     structure:
+    #       - name: "memory"
+    #         type: "uint8"
+    #         enum:
+    #           0x00: "Stop"
+    #           0x01: "T1"
+    #           0x02: "T2"
+    #           0x03: "T3"
+    #           0x04: "T4"
+    #           0x05: "T5"
+    #           0x06: "T6"
+    #           0x07: "T7"
+    #           0x08: "T8"
+    #   response: *status_ok_ng
+
+    # ========================================================================
+    # EXTENDED SETTINGS (0x1A, 0x05) - SET Menu Items
+    # ========================================================================
+
+    # Tone Control/TBW Settings (0x1A 0x05 0x0001-0x0030)
+    # set_rx_ssb_hpf_lpf:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0001
+    #   description: "RX > SSB > HPF/LPF settings"
+    #   request:
+    #     structure:
+    #       - name: "setting"
+    #         type: "uint8"
+    #         description: "HPF/LPF filter setting value"
+    #   response: *status_ok_ng
+
+    # set_rx_ssb_bass:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0002
+    #   description: "RX > SSB > Bass level (0x00=-5 to 0x10=+5)"
+    #   request:
+    #     structure:
+    #       - name: "level"
+    #         type: "uint8"
+    #         description: "Bass level: 0x00=-5 ... 0x0A=0 ... 0x10=+5"
+    #   response: *status_ok_ng
+
+    # set_rx_ssb_treble:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0003
+    #   description: "RX > SSB > Treble level (0x00=-5 to 0x10=+5)"
+    #   request:
+    #     structure:
+    #       - name: "level"
+    #         type: "uint8"
+    #         description: "Treble level: 0x00=-5 ... 0x0A=0 ... 0x10=+5"
+    #   response: *status_ok_ng
+
+    # set_tx_ssb_bass:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0017
+    #   description: "TX > SSB > Bass level (0x00=-5 to 0x10=+5). See p. 20"
+    #   request:
+    #     structure:
+    #       - name: "level"
+    #         type: "uint8"
+    #         description: "Bass level: 0x00=-5 ... 0x0A=0 ... 0x10=+5"
+    #   response: *status_ok_ng
+
+    # set_tx_ssb_treble:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0018
+    #   description: "TX > SSB > Treble level (0x00=-5 to 0x10=+5). See p. 20"
+    #   request:
+    #     structure:
+    #       - name: "level"
+    #         type: "uint8"
+    #         description: "Treble level: 0x00=-5 ... 0x0A=0 ... 0x10=+5"
+    #   response: *status_ok_ng
+
+    # Function Settings (0x1A 0x05 0x0031-0x0090)
+    # set_beep_level:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0031
+    #   description: "Beep level (0x0000-0x0255)"
+    #   request:
+    #     structure:
+    #       - name: "level_high"
+    #         type: "uint8"
+    #         description: "Level high byte"
+    #       - name: "level_low"
+    #         type: "uint8"
+    #         description: "Level low byte (0x0000=Min, 0x0255=Max)"
+    #   response: *status_ok_ng
+
+    # set_beep_confirmation:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0033
+    #   description: "Beep confirmation (0x00=OFF, 0x01=ON)"
+    #   request:
+    #     structure:
+    #       - name: "state"
+    #         type: "boolean"
+    #         description: "0x00=OFF, 0x01=ON"
+    #   response: *status_ok_ng
+
+    # set_auto_power_off:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0037
+    #   description: "Auto power OFF (0x00=OFF, 0x01=30min, 0x02=60min, 0x03=90min, 0x04=120min)"
+
+    # set_tx_delay_144m:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0038
+    #   description: "TX Delay 144M (0x00=OFF, 0x01=10ms, 0x02=15ms, 0x03=20ms, 0x04=25ms, 0x05=30ms)"
+
+    # set_tx_delay_430m:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0039
+    #   description: "TX Delay 430M"
+
+    # set_tx_delay_1200m:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0040
+    #   description: "TX Delay 1200M"
+
+    # set_tx_delay_2400m:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0041
+    #   description: "TX Delay 2400M"
+
+    # set_tx_delay_5600m:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0042
+    #   description: "TX Delay 5600M"
+
+    # set_tx_delay_10g:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0043
+    #   description: "TX Delay 10G"
+
+    # set_timeout_timer:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0044
+    #   description: "Time-Out Timer (0x00=OFF, 0x01=3min, 0x02=5min, 0x03=10min, 0x04=20min, 0x05=30min)"
+
+    # set_ptt_lock:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0045
+    #   description: "PTT Lock (0x00=OFF, 0x01=ON)"
+
+    # set_quick_split:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0046
+    #   description: "Quick SPLIT (0x00=OFF, 0x01=ON)"
+
+    # set_auto_repeater:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0049
+    #   description: "Auto Repeater (0x00=OFF, 0x01=ON(DUP), 0x02=ON(DUP,TONE))"
+
+    # set_rtty_mark_frequency:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0050
+    #   description: "RTTY Mark Frequency (0x00=1275Hz, 0x01=1615Hz, 0x02=2125Hz)"
+
+    # set_rtty_shift_width:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0051
+    #   description: "RTTY Shift Width (0x00=170Hz, 0x01=200Hz, 0x02=425Hz)"
+
+    # Speech Settings (0x1A 0x05 0x0054-0x0063)
+    # set_speech_language:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0054
+    #   description: "Speech Language (0x00=Japanese, 0x01=English)"
+
+    # set_speech_alphabet:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0055
+    #   description: "Speech Alphabet (0x00=Normal, 0x01=Phonetic)"
+
+    # set_speech_speed:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0056
+    #   description: "Speech Speed (0x00=Slow, 0x01=Fast)"
+
+    # set_speech_level:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0062
+    #   description: "Speech Level (0x0000-0x0255)"
+
+    # Additional Function Settings (0x1A 0x05 0x0064-0x0074)
+    # set_lock_function:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0064
+    #   description: "Lock Function (0x00=MAIN DIAL, 0x01=PANEL)"
+
+    # set_ssb_cw_sync_tuning:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0072
+    #   description: "SSB/CW Synchronous Tuning (0x00=OFF, 0x01=ON)"
+
+    # set_cw_normal_side:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0073
+    #   description: "CW Normal Side (0x00=LSB, 0x01=USB)"
+
+    # set_power_off_for_remote:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0074
+    #   description: "Power OFF for Remote Control (0x00=Shutdown only, 0x01=Standby/Shutdown)"
+
+    # DV/DD Settings (0x1A 0x05 0x0095-0x0109)
+    # set_standby_beep:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0095
+    #   description: "Standby Beep (0x00=OFF, 0x01=ON, 0x02=ON to me:High, 0x03=ON to me:Alarm)"
+
+    # set_auto_reply:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0096
+    #   description: "Auto Reply (0x00=OFF, 0x01=ON, 0x02=Voice)"
+
+    # set_dv_data_tx:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0097
+    #   description: "DV Data TX (0x00=PTT, 0x01=Auto)"
+
+    # set_dv_fast_data:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0098
+    #   description: "DV Fast Data (0x00=OFF, 0x01=ON)"
+
+    # set_digital_monitor:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0101
+    #   description: "Digital Monitor (0x00=Auto, 0x01=Digital, 0x02=Analog)"
+
+    # set_digital_repeater_set:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0102
+    #   description: "Digital Repeater Set (0x00=OFF, 0x01=ON)"
+
+    # set_dv_auto_detect:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0103
+    #   description: "DV Auto Detect (0x00=OFF, 0x01=ON)"
+
+    # QSO/RX Log Settings (0x1A 0x05 0x0110-0x0113)
+    # set_qso_log:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0110
+    #   description: "QSO Log (0x00=OFF, 0x01=ON)"
+
+    # set_rx_history_log:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0111
+    #   description: "RX History Log (0x00=OFF, 0x01=ON)"
+
+    # Connector Settings (0x1A 0x05 0x0114-0x0147)
+    # set_speaker_mic_af_output:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0114
+    #   description: "Speaker MIC AF Output (0x00=OFF, 0x01=ON)"
+
+    # set_usb_mod_level:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0124
+    #   description: "USB MOD Level (0x0000-0x0255)"
+
+    # set_ci_v_transceive:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0142
+    #   description: "CI-V Transceive (0x00=OFF, 0x01=ON)"
+
+    # set_ci_v_usb_echo_back:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0143
+    #   description: "CI-V USB Echo Back (0x00=OFF, 0x01=ON)"
+
+    # Display Settings (0x1A 0x05 0x0148-0x0175)
+    # set_lcd_backlight:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0148
+    #   description: "LCD Backlight (0x0000-0x0255)"
+
+    # set_lcd_backlight_auto:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0149
+    #   description: "LCD Backlight Auto Adjust (0x00=OFF, 0x01=ON)"
+
+    # set_screen_saver:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0150
+    #   description: "Screen Saver (0x00=OFF, 0x01=1min, 0x02=2min, 0x03=5min, 0x04=15min, 0x05=30min, 0x06=60min)"
+
+    # set_meter_peak_hold:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0152
+    #   description: "Meter Peak Hold (0x00=OFF, 0x01=ON)"
+
+    # set_memory_name_display:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0154
+    #   description: "Memory Name Display (0x00=OFF, 0x01=ON)"
+
+    # set_display_language:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0174
+    #   description: "Display Language (0x00=English, 0x01=Japanese)"
+
+    # set_system_language:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0175
+    #   description: "System Language (0x00=English, 0x01=Japanese)"
+
+    # Time Set Settings (0x1A 0x05 0x0176-0x0181)
+    # set_date:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0176
+    #   description: "Date (BCD: 20200101-20991231 = 2020/1/1 to 2099/12/31)"
+    #   request:
+    #     structure:
+    #       - name: "date"
+    #         type: "bcd4"
+    #         description: "Date in BCD format: YYYYMMDD (4 bytes: 20200101-20991231)"
+    #   response: *status_ok_ng
+
+    # set_time:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0177
+    #   description: "Time (BCD: 0000-2359 = 00:00 to 23:59)"
+    #   request:
+    #     structure:
+    #       - name: "time"
+    #         type: "bcd2"
+    #         description: "Time in BCD format: HHMM (2 bytes: 0000-2359)"
+    #   response: *status_ok_ng
+
+    # set_ntp_function:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0178
+    #   description: "NTP Function (0x00=OFF, 0x01=ON)"
+
+    # set_gps_time_correct:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0180
+    #   description: "GPS Time Correct (0x00=OFF, 0x01=Auto)"
+
+    # Scope Settings (0x1A 0x05 0x0184-0x0222)
+    # set_scope_during_tx:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0184
+    #   description: "Scope during TX (0x00=OFF, 0x01=ON)"
+
+    # set_scope_max_hold:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0185
+    #   description: "Max Hold (0x00=OFF, 0x01=10s Hold, 0x02=ON)"
+
+    # set_scope_center_type:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0186
+    #   description: "CENTER Type Display (0x00=Filter Center, 0x01=Carrier Point, 0x02=Carrier Point Abs Freq)"
+
+    # set_scope_vbw:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0188
+    #   description: "VBW (0x00=Narrow, 0x01=Wide)"
+
+    # set_scope_averaging:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0189
+    #   description: "Averaging (0x00=OFF, 0x01=2, 0x02=3, 0x03=4)"
+
+    # set_scope_waterfall:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0194
+    #   description: "Waterfall Display (0x00=OFF, 0x01=ON)"
+
+    # set_scope_waterfall_speed:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0195
+    #   description: "Waterfall Speed (0x00=Slow, 0x01=Mid, 0x02=Fast)"
+
+    # Voice Settings (0x1A 0x05 0x0227-0x0229)
+    # set_voice_tx_level:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0227
+    #   description: "VOICE TX Level (0x0000-0x0255)"
+
+    # set_voice_auto_monitor:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0228
+    #   description: "VOICE Auto Monitor (0x00=OFF, 0x01=ON)"
+
+    # set_voice_repeat_time:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0229
+    #   description: "VOICE Repeat Time (0x01=1sec to 0x15=15sec)"
+
+    # # Keyer Settings (0x1A 0x05 0x0230+)
+    # set_keyer_number_style:
+    #   cmd: 0x1A
+    #   subcmd: 0x05
+    #   subsubcmd: 0x0230
+    #   description: "Number Style (0x00=Normal, 0x01=190°ANO, 0x02=190°ANT, 0x03=90°NO, 0x04=90°NT)"
+
+  # Command groups
+  # command_groups:
+  #   frequency_control:
+  #    name: "Frequency Control"
+  #    commands:
+  #       - read_operating_frequency
+  #       - set_operating_frequency
+  #       - get_VFO_frequency
+  #       - send_VFO_frequency
+  #       - read_frequency_offset
+  #       - send_frequency_offset
+
+  #   mode_control:
+  #     name: "Mode Control"
+  #     commands:
+  #       - read_operating_mode
+  #       - set_operating_mode
+
+  #   vfo_memory:
+  #     name: "VFO and Memory"
+  #     commands:
+  #       - select_vfo_a
+  #       - select_vfo_b
+  #       - equalize_vfo
+  #       - exchange_vfo
+  #       - select_memory
+  #       - memory_write
+  #       - memory_to_vfo
+  #       - memory_clear
+
+  #   scan:
+  #     name: "Scan Operations"
+  #     commands:
+  #       - cancel_scan
+  #       - start_program_memory_scan
+  #       - start_program_scan
+  #       - start_df_scan
+  #       - start_memory_scan
+  #       - start_select_memory_scan
+
+  #   audio_rf:
+  #     name: "Audio and RF"
+  #     commands:
+  #       - set_af_level
+  #       - set_rf_gain
+  #       - set_squelch
+  #       - set_rf_power
+  #       - set_mic_gain
+  #       - set_nr_level
+  #       - set_comp_level
+
+  #   functions:
+  #     name: "Functions"
+  #     commands:
+  #       - set_preamp
+  #       - set_agc
+  #       - set_noise_blanker
+  #       - set_noise_reduction
+  #       - set_auto_notch
+  #       - set_manual_notch
+  #       - set_repeater_tone
+  #       - set_tone_squelch
+  #       - set_compressor
+  #       - set_monitor
+  #       - set_vox
+  #       - set_breakin
+  #       - set_afc
+  #       - set_dtcs
+  #       - set_dial_lock
+
+  #   meters:
+  #     name: "Meter Readings"
+  #     commands:
+  #       - read_s_meter
+  #       - read_po_meter
+  #       - read_swr_meter
+  #       - read_alc_meter
+  #       - read_comp_meter
+  #       - read_squelch_status
+
+  #   system:
+  #     name: "System Control"
+  #     commands:
+  #       - power_off
+  #       - power_on
+  #       - read_transceiver_id
+  #       - speech_all
+  #       - speech_freq_smeter
+  #       - speech_mode
