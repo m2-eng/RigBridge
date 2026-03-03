@@ -52,5 +52,13 @@
 - YAML-Protokolldateien folgen dem Schema in `protocols/general/`.
 - Neue Geräte → eigene YAML in `protocols/manufacturers/<hersteller>/`.
 - Leere Ordner erhalten `.gitkeep`.
-- Secrets nur in `.env` (nicht versioniert) – Vorlage: `.env.example`.
+- Secrets nicht im Klartext speichern; verschlüsselte Speicherung ist zu bevorzugen und umzusetzen.
 - Docker: Multi-Stage-Build, keine Secrets im Image, `.dockerignore` ist Pflicht.
+
+---
+
+## Zusammenarbeit mit AI-Assistenten
+
+- Sicherheit hat Priorität: Bei Architektur, Implementierung und Review ist grundsätzlich auf Security-Best-Practices zu achten.
+- Best-Practice-Ansatz: Lösungen sollen robust, wartbar und plattformkompatibel umgesetzt werden.
+- Konstruktives Feedback ist ausdrücklich erwünscht: Verbesserungsvorschläge, Kritik, Anmerkungen und sinnvolle Rückfragen sollen aktiv eingebracht werden.

@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "RigBridge API Server",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_api.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "RIGBRIDGE_LOG_LEVEL": "DEBUG"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "RigBridge Integration Test",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_integration.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Python: Debug Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "tests/",
+        "-v",
+        "--tb=short"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

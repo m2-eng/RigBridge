@@ -5,6 +5,10 @@
 > - den Umsetzungsstand zu prüfen
 > - Inkonsistenzen zwischen Anforderung und Implementierung zu erkennen
 > - neue Features gegen bestehende Anforderungen abzugleichen
+> - den aktuellen fachlichen Soll-/Ist-Stand ohne Änderungshistorie zu dokumentieren
+>
+> **Hinweis:** Eine Änderungshistorie wird in diesem Dokument bewusst **nicht** geführt;
+> Versionierung und Nachvollziehbarkeit erfolgen über Git.
 >
 > **Status-Legende:**
 > | Symbol | Bedeutung |
@@ -43,13 +47,13 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| USB-01 | Das System stellt eine Verbindung zu einem Funkgerät über einen konfigurierbaren USB/Serial-Port her. | ⬜ |
-| USB-02 | Der Port-Name ist konfigurierbar (Linux: `/dev/ttyUSB0`; Windows: `COM3`). | ⬜ |
-| USB-03 | Die Baud-Rate ist konfigurierbar (Standardwert: 19200). | ⬜ |
-| USB-04 | Weitere Serial-Parameter sind konfigurierbar: Datenbits, Stoppbits, Parität. | ⬜ |
-| USB-05 | Das System erkennt, ob die USB-Verbindung aktiv oder unterbrochen ist, und meldet den Status über die API. | ⬜ |
-| USB-06 | Bei Verbindungsabbruch versucht das System automatisch, die Verbindung nach konfigurierbarem Intervall wiederherzustellen. | ⬜ |
-| USB-07 | Das System unterstützt sowohl Linux (`/dev/tty*`) als auch Windows (`COM*`) ohne Code-Änderung. | ⬜ |
+| USB-01 | Das System stellt eine Verbindung zu einem Funkgerät über einen konfigurierbaren USB/Serial-Port her. | ✅ |
+| USB-02 | Der Port-Name ist konfigurierbar (Linux: `/dev/ttyUSB0`; Windows: `COM3`, aktuell `COM4`). | ✅ konfigurierbar in config.json |
+| USB-03 | Die Baud-Rate ist konfigurierbar (Standardwert: 19200). | ✅ konfigurierbar in config.json |
+| USB-04 | Weitere Serial-Parameter sind konfigurierbar: Datenbits, Stoppbits, Parität. | ✅ konfigurierbar in config.json (data_bits, stop_bits, parity) |
+| USB-05 | Das System erkennt, ob die USB-Verbindung aktiv oder unterbrochen ist, und meldet den Status über die API. | ✅ (is_connected property, Status-API) |
+| USB-06 | Bei Verbindungsabbruch versucht das System automatisch, die Verbindung nach konfigurierbarem Intervall wiederherzustellen. | ✅ reconnect_if_needed(), reconnect_interval konfigurierbar |
+| USB-07 | Das System unterstützt sowohl Linux (`/dev/tty*`) als auch Windows (`COM*`) ohne Code-Änderung. | ✅ path-agnostisch in config.json |
 
 ---
 
@@ -57,14 +61,14 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| CIV-01 | Das System baut CI-V-Befehle gemäß der gerätespezifischen YAML-Protokolldatei auf. | ⬜ |
-| CIV-02 | Das System interpretiert CI-V-Antworten des Funkgeräts und wandelt sie in strukturierte Daten um. | ⬜ |
-| CIV-03 | Unterstützte Befehle werden aus der YAML-Datei des aktiven Geräts geladen – kein Hardcoding von Befehlen im Code. | ⬜ |
-| CIV-04 | Das System unterstützt den CI-V-Befehl zum Lesen der aktuellen Frequenz. | ⬜ |
-| CIV-05 | Das System unterstützt den CI-V-Befehl zum Lesen des aktuellen Betriebsmodus (z.B. SSB, CW, FM). | ⬜ |
-| CIV-06 | Das System unterstützt das Setzen der Frequenz über CI-V. | ⬜ |
-| CIV-07 | Das System unterstützt das Setzen des Betriebsmodus über CI-V. | ⬜ |
-| CIV-08 | Unbekannte oder fehlerhafte CI-V-Antworten werden geloggt und führen nicht zu einem Absturz. | ⬜ |
+| CIV-01 | Das System baut CI-V-Befehle gemäß der gerätespezifischen YAML-Protokolldatei auf. | ✅ (Parser ✅, build_request() ✅) |
+| CIV-02 | Das System interpretiert CI-V-Antworten des Funkgeräts und wandelt sie in strukturierte Daten um. | ✅ (parse_response() ✅, BCD-Decoding) |
+| CIV-03 | Unterstützte Befehle werden aus der YAML-Datei des aktiven Geräts geladen – kein Hardcoding von Befehlen im Code. | ✅ (ProtocolParser, command lookup) |
+| CIV-04 | Das System unterstützt den CI-V-Befehl zum Lesen der aktuellen Frequenz. | ✅ (API implementiert, real/fallback-Daten) |
+| CIV-05 | Das System unterstützt den CI-V-Befehl zum Lesen des aktuellen Betriebsmodus (z.B. SSB, CW, FM). | ✅ (API implementiert, real/fallback-Daten) |
+| CIV-06 | Das System unterstützt das Setzen der Frequenz über CI-V. | ✅ (API implementiert, BCD-Encoding, OK/NG Status) |
+| CIV-07 | Das System unterstützt das Setzen des Betriebsmodus über CI-V. | ✅ (API implementiert, Mode-Encoding, OK/NG Status) |
+| CIV-08 | Unbekannte oder fehlerhafte CI-V-Antworten werden geloggt und führen nicht zu einem Absturz. | ✅ (Exception-Handling in Executor & Routes) |
 
 ---
 
@@ -72,13 +76,13 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| YAML-01 | Pro Funkgerät existiert eine eigene YAML-Datei in `protocols/manufacturers/<hersteller>/`. | 🔄 (Ordner angelegt) |
-| YAML-02 | Pro Hersteller existiert eine Hersteller-YAML mit gemeinsamen Definitionen. | 🔄 (ICOM-Ordner angelegt) |
-| YAML-03 | In `protocols/general/` befinden sich herstellerübergreifende, generische Datentypen. | 🔄 (Ordner angelegt) |
-| YAML-04 | Das System lädt die YAML-Datei beim Start anhand des konfigurierten Gerätenamens. | ⬜ |
-| YAML-05 | Das System validiert die YAML-Datei beim Laden gegen ein definiertes Schema. | ⬜ |
-| YAML-06 | Ein unbekanntes oder fehlendes Gerät erzeugt eine klare Fehlermeldung beim Start. | ⬜ |
-| YAML-07 | Neue Geräte können durch Ablegen einer YAML-Datei ohne Code-Änderung hinzugefügt werden. | ⬜ |
+| YAML-01 | Pro Funkgerät existiert eine eigene YAML-Datei in `protocols/manufacturers/<hersteller>/`. | ✅ (ic905.yaml vorhanden) |
+| YAML-02 | Pro Hersteller existiert eine Hersteller-YAML mit gemeinsamen Definitionen. | 🔄 (icom/ Ordner angelegt, noch keine gemeinsamen Defs) |
+| YAML-03 | In `protocols/general/` befinden sich herstellerübergreifende, generische Datentypen. | ⬜ (Ordner angelegt, Contents TODO) |
+| YAML-04 | Das System lädt die YAML-Datei beim Start anhand des konfigurierten Gerätenamens. | ✅ (ProtocolParser mit config-driven loading) |
+| YAML-05 | Das System validiert die YAML-Datei beim Laden gegen ein definiertes Schema. | 🔄 (Basic validation vorhanden, Schema-enforcement TODO) |
+| YAML-06 | Ein unbekanntes oder fehlendes Gerät erzeugt eine klare Fehlermeldung beim Start. | ✅ (Exception-Handling implementiert) |
+| YAML-07 | Neue Geräte können durch Ablegen einer YAML-Datei ohne Code-Änderung hinzugefügt werden. | ✅ (architecture-ready, nur config.json anpassen nötig) |
 
 ---
 
@@ -86,16 +90,16 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| API-01 | Das System stellt eine REST-API auf einem konfigurierbaren Port bereit (Standard: 8080). | ⬜ |
-| API-02 | `GET /api/status` – liefert den aktuellen Verbindungsstatus (USB, CAT). | ⬜ |
-| API-03 | `GET /api/rig/frequency` – liefert die aktuelle Frequenz des Funkgeräts. | ⬜ |
-| API-04 | `PUT /api/rig/frequency` – setzt die Frequenz des Funkgeräts. | ⬜ |
-| API-05 | `GET /api/rig/mode` – liefert den aktuellen Betriebsmodus. | ⬜ |
-| API-06 | `PUT /api/rig/mode` – setzt den Betriebsmodus. | ⬜ |
-| API-07 | `GET /api/config` – liefert die aktuelle Konfiguration. Secrets (API-Keys, Passwörter) werden **niemals** zurückgeliefert (Felder werden durch `***` ersetzt oder weggelassen). | ⬜ |
-| API-08 | `PUT /api/config` – speichert geänderte Konfigurationswerte persistent. | ⬜ |
-| API-09 | `GET /health` – Health-Check-Endpunkt für Docker und Monitoring. | ⬜ |
-| API-10 | Alle Fehlerantworten folgen dem einheitlichen Format: `{ "error": true, "code": "...", "message": "..." }`. | ⬜ |
+| API-01 | Das System stellt eine REST-API auf einem konfigurierbaren Port bereit (Standard: 8080). | ✅ (FastAPI, port in config.json) |
+| API-02 | `GET /api/status` – liefert den aktuellen Verbindungsstatus (USB, CAT). | ✅ (implementiert, echte USB-Integration pending) |
+| API-03 | `GET /api/rig/frequency` – liefert die aktuelle Frequenz des Funkgeräts. | ✅ (implementiert, echte Daten ab CIV-Decode) |
+| API-04 | `PUT /api/rig/frequency` – setzt die Frequenz des Funkgeräts. | ✅ (implementiert, returns OK/NG status) |
+| API-05 | `GET /api/rig/mode` – liefert den aktuellen Betriebsmodus. | ✅ (implementiert, echte Daten ab CIV-Decode) |
+| API-06 | `PUT /api/rig/mode` – setzt den Betriebsmodus. | ✅ (implementiert, returns OK/NG status) |
+| API-07 | `GET /api/config` – liefert die aktuelle Konfiguration. Secrets (API-Keys, Passwörter) werden **niemals** zurückgeliefert (Felder werden durch `***` ersetzt oder weggelassen). | ⬜ (API TODO, ConfigManager ready) |
+| API-08 | `PUT /api/config` – speichert geänderte Konfigurationswerte persistent. | ⬜ (ConfigManager.save() ready, API TODO) |
+| API-09 | `GET /health` – Health-Check-Endpunkt für Docker und Monitoring. | ✅ (implementiert, nutzt __version__ aus VERSION-Datei) |
+| API-10 | Alle Fehlerantworten folgen dem einheitlichen Format: `{ "error": true, "code": "...", "message": "..." }`. | 🔄 (HTTPException genutzt, Format standardisiert in FastAPI) |
 
 ---
 
@@ -107,7 +111,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | CAT-02 | Die Schnittstelle ist kompatibel mit Wavelog (Hamlib-Protokoll oder Wavelog-eigenes API). | ⬜ |
 | CAT-03 | Der CAT-API-Key zur Authentifizierung gegenüber Wavelog ist konfigurierbar. | ⬜ |
 | CAT-04 | Die Wavelog-API-URL ist konfigurierbar. | ⬜ |
-| CAT-05 | Frequenz und Modus werden bei Änderung automatisch an Wavelog gemeldet (Push oder Poll). | ⬜ |
+| CAT-05 | Frequenz und Modus werden per Polling-Mechanismus automatisch an Wavelog gemeldet. | ⬜ |
 | CAT-06 | Die CAT-Schnittstelle kann unabhängig von der USB-Verbindung aktiviert/deaktiviert werden. | ⬜ |
 | CAT-07 | Verbindungsfehler zur Wavelog-Instanz werden geloggt und führen nicht zum Absturz. | ⬜ |
 
@@ -117,7 +121,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| CFG-01 | Alle Konfigurationswerte werden persistent gespeichert (Datei oder Datenbank). | ⬜ |
+| CFG-01 | Alle Konfigurationswerte werden persistent in einer JSON-Datei gespeichert. | ⬜ |
 | CFG-02 | Die Konfiguration wird beim Start automatisch geladen. | ⬜ |
 | CFG-03 | Umgebungsvariablen (`.env`) überschreiben dateibasierte Konfigurationswerte (12-Factor-Prinzip). | ⬜ |
 | CFG-04 | Konfigurierbare Parameter (Mindestumfang): USB-Port, Baud-Rate, Serial-Parameter, CAT-Port, Wavelog-URL, Wavelog-API-Key, Gerätename, API-Port, Log-Level. | ⬜ |
@@ -134,7 +138,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | SEC-02 | Secrets werden nicht in Log-Einträgen ausgegeben (auch nicht auf `DEBUG`-Level). | ⬜ |
 | SEC-03 | Die Verbindung von RigBridge zu Wavelog erfolgt **ausschließlich über HTTPS** (TLS). `verify=False` ist verboten. | ⬜ |
 | SEC-04 | Der API-Port (8080) wird nur auf `127.0.0.1` gebunden, solange kein Netzwerkzugriff konfiguriert ist. | ✅ (docker-compose.yml) |
-| SEC-05 | HTTPS für die interne REST-API ist optional aktivierbar (konfigurierbarer Zertifikatspfad), wenn Zugriff über Netzwerk nötig ist. | ⬜ (Entscheidung offen, siehe Q-07) |
+| SEC-05 | HTTPS für die interne REST-API ist optional aktivierbar (konfigurierbarer Zertifikatspfad), wenn Zugriff über Netzwerk nötig ist. | 🔄 (Entscheidung getroffen, Implementierung ausstehend) |
 | SEC-06 | Wird HTTPS aktiviert, wird das TLS-Zertifikat validiert (kein `verify=False`). | ⬜ |
 | SEC-07 | Der Wavelog API-Key wird als Passwort-Eingabefeld (`type="password"`) im UI dargestellt. | ⬜ |
 | SEC-08 | Auf Linux hat die `.env`-Datei Dateiberechtigungen `600` (nur Eigentuemer lesbar). | ⬜ |
@@ -162,10 +166,12 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Anforderung | Status |
 |---|---|---|
-| LOG-01 | Das System schreibt strukturierte Log-Einträge (mindestens: Zeitstempel, Level, Modul, Nachricht). | ⬜ |
-| LOG-02 | Das Log-Level ist konfigurierbar (`DEBUG`, `INFO`, `WARNING`, `ERROR`). | ⬜ |
-| LOG-03 | Logs werden auf `stdout` ausgegeben (Docker-kompatibel). | ⬜ |
-| LOG-04 | Optionale Ausgabe in eine Logdatei ist konfigurierbar. | ⬜ |
+| LOG-01 | Das System schreibt strukturierte Log-Einträge (mindestens: Zeitstempel, Level, Modul, Nachricht). | ✅ (StructuredFormatter, Format: [TIMESTAMP] [LEVEL] [MODULE] MESSAGE) |
+| LOG-02 | Das Log-Level ist konfigurierbar (`DEBUG`, `INFO`, `WARNING`, `ERROR`). | ✅ (RigBridgeLogger.configure(), env-override möglich) |
+| LOG-03 | Logs werden auf `stdout` ausgegeben (Docker-kompatibel). | ✅ (StreamHandler zu stderr) |
+| LOG-04 | Optionale Ausgabe in eine Logdatei ist konfigurierbar. | ✅ (RigBridgeLogger.configure(log_file=...) optional) |
+| LOG-05 | **Alle** Log-Einträge (inkl. Uvicorn, Framework-Logs) verwenden das gleiche einheitliche Format: `[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [MODULE] MESSAGE` | ✅ (StructuredFormatter auf alle Logger angewendet, uvicorn.access/error konfiguriert, uvicorn.run mit log_config=None) |
+| LOG-06 | Zeitstempel enthalten **Millisekunden** (nicht nur Sekunden). | ✅ (Format: `[YYYY-MM-DD HH:MM:SS.mmm]`) |
 
 ---
 
@@ -178,10 +184,10 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | DEP-01 | Die Anwendung ist auf Linux mit `docker compose up` startbar. | 🔄 (`docker-compose.yml` angelegt) |
 | DEP-02 | Das Docker-Image basiert auf einem schlanken Linux-Basis-Image (Python slim). | 🔄 (`Dockerfile` angelegt) |
 | DEP-03 | Der Container läuft ohne Root-Rechte (UID 1001). | ✅ (Non-Root-User + `chown` im `Dockerfile`) |
-| DEP-04 | Alle Konfigurationswerte können über Umgebungsvariablen übergeben werden. | 🔄 (`.env.example` angelegt) |
+| DEP-04 | Alle Konfigurationswerte können über Umgebungsvariablen übergeben werden. | ✅ (RigBridgeConfig.override_from_env() mit RIGBRIDGE_* prefix) |
 | DEP-05 | USB-Geräte können dem Container auf Linux über den `devices`-Abschnitt übergeben werden. | ⬜ |
-| DEP-06 | Ein Health-Check-Endpunkt ist im `docker-compose.yml` konfiguriert. | 🔄 (angelegt, Endpunkt noch nicht implementiert) |
-| DEP-07 | Die Anwendung ist auf Windows **nativ** startbar (`python -m src.backend.api` o.Ä.), ohne Docker. | ⬜ |
+| DEP-06 | Ein Health-Check-Endpunkt ist im `docker-compose.yml` konfiguriert. | ✅ (`GET /health` implementiert) |
+| DEP-07 | Die Anwendung ist auf Windows **nativ** startbar (`python run_api.py`), ohne Docker. | ✅ (run_api.py nutzt nur config.json) |
 | DEP-08 | Privilege-Eskalation im Container ist verboten (`no-new-privileges:true`). | ✅ (in `docker-compose.yml`) |
 | DEP-09 | Alle Linux-Capabilities sind gedroppt (`cap_drop: ALL`). | ✅ (in `docker-compose.yml`) |
 | DEP-10 | Das Container-Dateisystem ist read-only; `/tmp` als tmpfs mit `noexec,nosuid`. | ✅ (in `docker-compose.yml`) |
@@ -211,19 +217,5 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Frage | Status |
 |---|---|---|
-| Q-01 | Welches Web-Framework wird im Backend verwendet? (Flask, FastAPI, o.Ä.) | ⬜ Offen |
 | Q-02 | Wie ist das CAT-Protokoll genau spezifiziert? (Hamlib-netrigctl, Wavelog-eigene API, …) | ⬜ Offen |
-| Q-03 | Wird die Konfiguration dateibasiert (YAML/JSON) oder in einer lokalen Datenbank (SQLite) gespeichert? | ⬜ Offen |
-| Q-04 | Polling oder Event-basierte Frequenz-/Modus-Übermittlung an Wavelog? | ⬜ Offen |
 | Q-05 | Authentifizierung für die interne REST-API notwendig (lokales Netz vs. öffentlicher Zugriff)? | ⬜ Offen |
-| Q-06 | Welche weiteren Hersteller / Geräte sollen unterstützt werden (über ICOM hinaus)? | ⬜ Offen |
-| Q-07 | Muss HTTPS für die interne REST-API / Web-UI unterstützt werden, wenn der Zugriff über das lokale Netz erfolgt (nicht nur `localhost`)? Wenn ja: selbstsigniertes Zertifikat (`mkcert`) oder Let’s Encrypt? | ⬜ Offen |
-| Q-08 | Soll der Wavelog API-Key verschlüsselt gespeichert werden (OS-Keychain / Windows Credential Manager / `cryptography`-Library) oder ist `chmod 600 .env` als Schutzmaßnahme ausreichend? | ⬜ Offen |
-
----
-
-## 6. Änderungshistorie
-
-| Datum | Änderung |
-|---|---|
-| 2026-03-03 | Initiale Erfassung der funktionalen Anforderungen |

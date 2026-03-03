@@ -96,6 +96,8 @@ RigBridge/
 
 - Leere Ordner enthalten immer eine `.gitkeep`-Datei.
 - Sobald der erste echte Inhalt in einem Ordner abgelegt wird, wird `.gitkeep` entfernt.
+- Nicht benötigte Dateien sind zu entfrenen.
+- Das root-Verzeichnis enthält nur die nötigsten Dateien.
 
 ---
 
