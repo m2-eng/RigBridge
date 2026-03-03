@@ -94,6 +94,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 - **Secrets nie loggen:** API-Keys und Passwörter dürfen nicht in Log-Aufrufen auftauchen, auch nicht auf `DEBUG`-Level.
 - **Secrets nie in API-Responses:** Konfigurationsendpunkte maskieren Secrets (`"api_key": "***"`).
+- **Secrets verschlüsselt speichern:** Persistente Speicherung von API-Keys/Passwörtern erfolgt nur verschlüsselt (kein Klartextspeicher).
 - **HTTPS erzwingen für Wavelog:**
   ```python
   # Richtig – TLS-Validierung aktiv
@@ -147,7 +148,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 - Docker ist ausschließlich für **Linux** vorgesehen (Produktion + optionale Linux-Entwicklung).
 - Auf **Windows** wird die Anwendung **nativ** gestartet – kein Docker.
 - Das `Dockerfile` liegt im Projekt-Root und baut ein Linux-Image (Multi-Stage: `builder` + `runtime`).
-- Keine Secrets in `Dockerfile` oder `docker-compose.yml` – ausschließlich über `.env`-Dateien übergeben.
+- Keine Secrets in `Dockerfile` oder `docker-compose.yml`; Übergabe nur zur Laufzeit (z.B. `.env`/Environment), persistente Speicherung ausschließlich verschlüsselt.
 - `.dockerignore` ist Pflicht und schließt mindestens `__pycache__`, `.env`, `tests/` aus.
 - `docker-compose.yml` wird für Linux-Entwicklung und Produktion genutzt.
 - **Sicherheit im Container** – folgende Maßnahmen sind verbindlich (siehe `docker-compose.yml`):

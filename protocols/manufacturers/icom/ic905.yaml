@@ -28,7 +28,7 @@ protocol:
 
   addresses:
     controller: 0xE0
-    radio: 0xAC
+    radio: 0xA4
 
   # templates for common request or response patterns
   templates:
@@ -1058,42 +1058,40 @@ protocol:
     # ========================================================================
     # METER READINGS (0x15)
     # ========================================================================
-    # read_squelch_status:
-    #   cmd: 0x15
-    #   subcmd: 0x01
-    #   description: "Read squelch status"
-    #   request:
-    #     structure: []
-    #   response:
-    #     structure:
-    #       - name: "squelch_status"
-    #         type: "boolean"
-    #         description: "Squelch status (0x00=Close, 0x01=Open)"
+    read_squelch_status:
+      cmd: 0x15
+      subcmd: 0x01
+      description: "Read squelch status"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "squelch_status"
+            type: "boolean"
+            description: "Squelch status (0x00=Close, 0x01=Open)"
 
-    # read_s_meter:
-    #   cmd: 0x15
-    #   subcmd: 0x02
-    #   description: "Read S-meter (0x00=0, 0x78=74dB, 0xF1=134dB)"
-    #   request:
-    #     structure: []
-    #   response:
-    #     structure:
-    #       - name: "level_high"
-    #         type:
-    #           size: 1
-    #           description: "S-meter level S0 to S9+60dB encoded as 0x00-0xFF (0x00=0, 0x78=74dB, 0xF1=134dB)"
-    #           encoding:
-    #             method: "direct"
-    #           scaling:
-    #             reference_points:
-    #               - "0x00 = 0"
-    #               - "0x78 = 74 dB"
-    #               - "0xF1 = 134 dB"
-    #             interpolation: "linear"
-    #             description: "The S-meter scaling is non-linear; this provides a mapping from raw value to dB."
-    #           range:
-    #             min: 0
-    #             max: 255
+    read_s_meter:
+      cmd: 0x15
+      subcmd: 0x02
+      description: "Read S-meter (0x00=0, 0x78=54dB, 0xF1=114dB)"
+      request:
+        structure: []
+      response:
+        structure:
+          - name: "level_high"
+            type: "uint8_s_meter"
+            description: "S-meter level (S0 to S9+60dB) encoded as 0x00-0xFF"
+            scaling:
+              method: "linear_interpolation"
+              unit: "dB"
+              points:
+                0x00: 0
+                0x78: 54
+                0xF1: 114
+              range:
+                min: 0
+                max: 241
+              description: "Linear interpolation between calibration points for S-meter reading"
 
     # read_varios_squelch_status:
     #   cmd: 0x15

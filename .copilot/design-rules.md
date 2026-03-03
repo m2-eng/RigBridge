@@ -79,15 +79,15 @@
 
 - Wird die App in einem lokalen Heimnetz über eine IP-Adresse (nicht `localhost`) aufgerufen, muss HTTPS aktivierbar sein.
 - Für selbstsignierte Zertifikate (`mkcert` o.Ä.) ist die Konfiguration zu dokumentieren.
-- Ein optionaler TLS-Modus (HTTPS) mit konfigurierbarem Zertifikatspfad ist als Anforderung einzuplanen (siehe Q-07 in `requirements.md`).
+- Ein optionaler TLS-Modus (HTTPS) mit konfigurierbarem Zertifikatspfad ist vorzubereiten und per Konfiguration aktivierbar umzusetzen.
 
 #### Speicherung von Secrets (API-Key)
 
-- Der Wavelog API-Key wird als Klartext in der `.env`-Datei gespeichert.
+- Der Wavelog API-Key wird verschlüsselt gespeichert (kein Klartext im persistenten Speicher).
 - Die `.env`-Datei muss restriktive Dateiberechtigungen haben: `chmod 600 .env` (nur Eigentuemer lesbar).
 - Im Docker-Container wird die `.env`-Datei über `env_file` eingebunden und ist nicht im Image enthalten.
-- Eine weitergehende Verschlüsselung des API-Keys (z.B. via OS-Keychain) ist in **Q-08** als offene Entscheidung festgehalten.
-- Auf Windows (native Ausführung) kann der Windows Credential Manager als Alternative zur `.env` genutzt werden – ist aber optional und nicht Pflicht im ersten Release.
+- Für die Verschlüsselung sind plattformgeeignete Mechanismen zu verwenden (z.B. OS-Keychain / Windows Credential Manager oder ein dokumentiertes, sicheres Verschlüsselungsverfahren).
+- Unverschlüsselte Fallbacks dürfen nur als explizite, dokumentierte Ausnahme für lokale Entwicklungsumgebungen zulässig sein.
 
 ---
 

@@ -1,4 +1,13 @@
 # ──────────────────────────────────────────────
+# Deprecated Test Files (Cleanup)
+# Use: python run_tests.py instead
+# ──────────────────────────────────────────────
+test_integration.py
+test_real_hardware.py
+test_real_hardware_debug.py
+test_*.deprecated
+
+# ──────────────────────────────────────────────
 # Node.js / npm (Frontend-Tooling)
 # ──────────────────────────────────────────────
 node_modules/
@@ -117,6 +126,7 @@ pip-delete-this-directory.txt
 htmlcov/
 .coverage
 .coverage.*
+coverage.xml
 
 # ──────────────────────────────────────────────
 # Docker

@@ -1,0 +1,31 @@
+name: Performance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  performance-check:
+    name: Performance checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run command/performance focused tests
+        run: |
+          python -m pytest tests/backend/test_2_commands/ tests/backend/test_3_usb_simulation/ -m "not usb_real" --durations=10 -v
