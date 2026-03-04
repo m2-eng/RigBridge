@@ -18,6 +18,8 @@ Skip wenn keine Hardware vorhanden:
     pytest tests/backend/test_4_usb_real_hardware/ -m usb_real -v --tb=short 2>&1 | grep -E "(SKIP|PASS|FAIL)"
 """
 
+import asyncio
+
 import pytest
 from pathlib import Path
 
@@ -62,7 +64,8 @@ class TestRealHardware:
         """Test: USB-Verbindung ist hergestellt."""
         assert usb_connection.is_connected, "USB sollte verbunden sein"
 
-    def test_read_frequency_from_ic905(self, usb_connection, protocol_file, manufacturer_file, request):
+    @pytest.mark.asyncio
+    async def test_read_frequency_from_ic905(self, usb_connection, protocol_file, manufacturer_file, request):
         """Test: Lese Frequenz vom IC-905."""
         logger.info("Lese Betriebsfrequenz vom IC-905...")
 
@@ -72,7 +75,7 @@ class TestRealHardware:
             usb_connection=usb_connection
         )
 
-        result = executor.execute_command('read_operating_frequency')
+        result = await executor.execute_command('read_operating_frequency')
 
         # Überprüfung
         assert result.success, f"Fehler beim Auslesen: {result.error}"
@@ -93,7 +96,8 @@ class TestRealHardware:
         assert 0 < frequency_hz < 10_000_000_000, \
             f"Frequenz außerhalb plausiblen Bereichs: {frequency_mhz:.6f} MHz"
 
-    def test_read_mode_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
+    @pytest.mark.asyncio
+    async def test_read_mode_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Lese Betriebsmodus vom IC-905."""
         logger.info("Lese Betriebsmodus vom IC-905...")
 
@@ -103,7 +107,7 @@ class TestRealHardware:
             usb_connection=usb_connection
         )
 
-        result = executor.execute_command('read_operating_mode')
+        result = await executor.execute_command('read_operating_mode')
 
         assert result.success, f"Fehler beim Auslesen: {result.error}"
         assert 'mode' in result.data, "mode sollte in Daten sein"
@@ -111,7 +115,8 @@ class TestRealHardware:
         mode = result.data.get('mode', 'UNKNOWN')
         logger.info(f"✓ Modus: {mode}")
 
-    def test_read_s_meter_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
+    @pytest.mark.asyncio
+    async def test_read_s_meter_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Lese S-Meter Level vom IC-905."""
         logger.info("Lese S-Meter vom IC-905...")
 
@@ -121,7 +126,7 @@ class TestRealHardware:
             usb_connection=usb_connection
         )
 
-        result = executor.execute_command('read_s_meter')
+        result = await executor.execute_command('read_s_meter')
 
         assert result.success, f"Fehler beim Auslesen: {result.error}"
         assert 'level_high' in result.data, "level_high sollte in Daten sein"
@@ -132,7 +137,8 @@ class TestRealHardware:
         # S-Meter Werte sollten im Bereich 0x00-0xF1 sein
         assert 0 <= level <= 255, f"S-Meter außerhalb Bereich: 0x{level:02X}"
 
-    def test_multiple_reads_consistency(self, usb_connection, protocol_file, manufacturer_file):
+    @pytest.mark.asyncio
+    async def test_multiple_reads_consistency(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Mehrere Reads hintereinander (Konsistenz)."""
         logger.info("Lese Frequenz mehrfach zur Konsistenzprüfung...")
 
@@ -144,7 +150,7 @@ class TestRealHardware:
 
         frequencies = []
         for i in range(3):
-            result = executor.execute_command('read_operating_frequency')
+            result = await executor.execute_command('read_operating_frequency')
             assert result.success, f"Read #{i+1} fehlgeschlagen"
             frequencies.append(result.data['frequency'])
 
@@ -157,7 +163,8 @@ class TestRealHardware:
             f"Frequenzschwankung zu groß: {max_diff} Hz"
 
     @pytest.mark.slow
-    def test_echo_detection_filtering(self, usb_connection, protocol_file, manufacturer_file):
+    @pytest.mark.asyncio
+    async def test_echo_detection_filtering(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Echo-Detection und -Filterung funktioniert."""
         logger.info("Teste Echo-Detection...")
 
@@ -171,13 +178,14 @@ class TestRealHardware:
         commands = ['read_s_meter', 'read_operating_frequency', 'read_operating_mode']
 
         for cmd_name in commands:
-            result = executor.execute_command(cmd_name)
+            result = await executor.execute_command(cmd_name)
             # Sollten erfolgreich sein (keine Echo-Fehler)
             assert result.success or result.error is None, \
                 f"Echo-Filter Fehler bei {cmd_name}: {result.error}"
 
     @pytest.mark.skip(reason="SET-Befehle erfordern manuelles Überprüfen des Geräts")
-    def test_set_frequency_on_ic905(self, usb_connection, protocol_file, manufacturer_file):
+    @pytest.mark.asyncio
+    async def test_set_frequency_on_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Setze Frequenz auf dem IC-905.
 
         ⚠️  WARNUNG: Dieser Test ändert die Frequenz des Geräts!
@@ -196,7 +204,7 @@ class TestRealHardware:
         )
 
         # Setze auf 145.5 MHz (IARU Region 2 2m Band)
-        result = executor.execute_command(
+        result = await executor.execute_command(
             'set_operating_frequency',
             data={'frequency': 145_500_000}
         )

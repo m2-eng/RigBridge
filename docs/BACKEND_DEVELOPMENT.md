@@ -10,16 +10,19 @@ RigBridge Backend ist eine **FastAPI**-basierte REST API zum Steuern von Icom-Fu
 
 ```
 src/backend/
-├── config/          # Konfigurationsverwaltung & Logging
-│   ├── logger.py    # Zentralisiertes Logging
-│   └── settings.py  # Config-Management (config.json)
-├── civ/             # CI-V Protokoll-Parser & Executor
-│   └── executor.py  # Befehlsausführung
-├── usb/             # USB/Serial-Kommunikation (TODO)
-├── cat/             # CAT/Wavelog-Integration (TODO)
-└── api/             # REST API Endpoints
-    ├── main.py      # FastAPI App-Factory
-    └── routes.py    # Alle API-Endpunkte
+├── config/              # Konfigurationsverwaltung & Logging
+│   ├── logger.py        # Zentralisiertes Logging
+│   ├── settings.py      # Config-Management (config.json)
+│   └── secret_provider.py # Secret-Verwaltung (Vault, etc.)
+├── civ/                 # CI-V Protokoll-Parser & Executor
+│   └── executor.py      # Befehlsausführung (ASYNC mit TransportManager)
+├── usb/                 # USB/Serial-Kommunikation & Transport-Management
+│   ├── connection.py    # Serielle Verbindung (low-level)
+│   └── transport_manager.py # Resource-Verwaltung (Semaphore, Lock)
+├── cat/                 # CAT/Wavelog-Integration
+└── api/                 # REST API Endpoints
+    ├── main.py          # FastAPI App-Factory
+    └── routes.py        # Alle API-Endpunkte (ASYNC, nutzt TransportManager)
 ```
 
 ## 🚀 Schnelleinstieg
@@ -90,23 +93,58 @@ print(cmd.cmd, cmd.subcmd)  # (0x15, 0x02)
 cmd = executor.parser.get_command_by_code(0x14, 0x0A)
 ```
 
-### Befehlsausführung (Stub → Real)
-```python
-# Aktuell: Stub mit simulierten Daten
+### Befehlsausführung (ASYNC mit TransportManager)
 
-result = executor.execute_command('read_s_meter')
-print(result.success)       # True
-print(result.data)          # {"level_db": 45.5, "level_raw": 0x78}
-print(result.raw_response)  # None (jetzt noch) → bytes später
+Die Befehlsausführung ist jetzt **asynchron** und nutzt einen zentralen **TransportManager**, um Race Conditions zu vermeiden:
+
+```python
+import asyncio
+from src.backend.civ import CIVCommandExecutor
+
+executor = CIVCommandExecutor(
+    protocol_file=Path('protocols/manufacturers/icom/ic905.yaml'),
+    manufacturer_file=Path('protocols/manufacturers/icom/icom.yaml')
+)
+
+# Befehl asynchron ausfÃ¼hren (WICHTIG: await erforderlich!)
+result = await executor.execute_command('read_operating_frequency')
+print(result.success)       # True/False
+print(result.data)          # {"frequency": 145500000, "vfo": "A"}
+print(result.error)         # Fehlermeldung bei Fehler
 
 # Mit Parametern
-result = executor.execute_command(
+result = await executor.execute_command(
     'set_operating_frequency',
     data={'frequency': 145500000}
 )
 ```
 
-### FastAPI Routes (Typsicher)
+**Warnung:** `execute_command()` ist jetzt `async def` - muss mit `await` aufgerufen werden!
+
+### TransportManager - Zentrale Resource-Verwaltung
+
+Der **TransportManager** (`src/backend/usb/transport_manager.py`) verhindert simultane USB-Zugriffe:
+
+```python
+from src.backend.usb.transport_manager import TransportManager
+from src.backend.usb.connection import USBConnection
+
+# TransportManager wird vom Executor automatisch erstellt
+executor = CIVCommandExecutor(...)
+# Der TransportManager sitzt im executor.transport_manager
+
+# Nur EIN Befehl zur Zeit:
+# - API-Befehle: 10s Timeout
+# - Health-Check: 5s Timeout
+# - Automatisches Queuing wenn beide versuchen gleichzeitig
+```
+
+**Wichtig:** Alle USB-Befehle sind durch das Lock geschÃ¼tzt - keine direkte USB-Nutzung in routes.py!
+
+### FastAPI Routes (Typsicher & Async)
+
+Alle Endpunkte sind `async` und nutzen den TransportManager automatisch:
+
 ```python
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -116,16 +154,29 @@ router = APIRouter()
 class FrequencyRequest(BaseModel):
     frequency_hz: int
 
-class FrequencyResponse(BaseModel):
-    frequency_hz: int
-    vfo: str
-
 @router.put("/rig/frequency")
-async def set_frequency(req: FrequencyRequest) -> FrequencyResponse:
-    # Pydantic validiert Input automatisch
-    # OpenAPI/Swagger generiert sich selbst
-    ...
+async def set_frequency(request: FrequencyRequest) -> Dict[str, Any]:
+    """
+    Setzt die Betriebsfrequenz.
+    
+    TransportManager sorgt automatisch dafÃ¼r, dass
+    nur ein USB-Befehl zur Zeit ausgefÃ¼hrt wird.
+    """
+    executor = get_executor()
+    
+    # Async ausfÃ¼hren - TransportManager koordiniert!
+    result = await executor.execute_command(
+        'set_operating_frequency',
+        data={'frequency': request.frequency_hz}
+    )
+    
+    if result.success:
+        return {"success": True, "frequency_hz": request.frequency_hz}
+    else:
+        raise HTTPException(status_code=400, detail=result.error)
 ```
+
+**Wichtig:** Keine Semaphore-Code direkt in routes.py - TransportManager macht das!
 
 ## 🔄 Workflow für neue Features
 

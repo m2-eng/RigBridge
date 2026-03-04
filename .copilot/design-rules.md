@@ -33,6 +33,40 @@
 
 ---
 
+## 3b. TransportManager: Zentrale Ressourcen-Verwaltung
+
+**WICHTIG (seit Issue #10):** Alle USB-Zugriffe werden durch einen zentralen `TransportManager` (`src/backend/usb/transport_manager.py`) koordiniert:
+
+- **Mutual Exclusion:** Nur EIN Befehl zur Zeit hat Zugriff auf die USB-Ressource (via `asyncio.Lock()`)
+- **Keine simultanen Zugriffe:** Health-Check und API-Anfragen können nicht gleichzeitig senden/empfangen
+- **Timeout-basierte Deadlock-Prevention:**
+  - Health-Check: max 5 Sekunden (muss nicht blockieren)
+  - API-Befehle: max 10 Sekunden (User wartet)
+  - Bei Timeout: HTTP 503 "Service Unavailable"
+- **Keine Semaphore in der API:** API-Code ist sauber (`routes.py`) - kein Lock-Code dort!
+- **Einfach austauschbar:** TransportManager kann später leicht auf LAN/andere Transporte erweitert werden
+
+### Async/Await Patterns (BINDEND)
+
+```python
+# ✅ RICHTIG: execute_command ist async, muss mit await aufgerufen werden
+async def my_endpoint():
+    result = await executor.execute_command('read_frequency')
+    return result
+
+# ❌ FALSCH: await vergessen - führt zu "Coroutine was never awaited"
+async def my_endpoint():
+    result = executor.execute_command('read_frequency')  # ← TypeError!
+    return result
+```
+
+**Regeln:**
+- `CIVCommandExecutor.execute_command()` ist immer `async def`
+- Alle API-Endpunkte, die `execute_command()` aufrufen, MÜSSEN `async def` sein
+- Alle Tests, die `execute_command()` aufrufen, MÜSSEN mit `@pytest.mark.asyncio` und `async def` sein
+
+---
+
 ## 4. Fehlerbehandlung
 
 - Alle API-Endpunkte geben strukturierte Fehlermeldungen zurück (JSON mit `error`, `message`, `code`).

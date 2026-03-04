@@ -2,15 +2,18 @@
 API-Routen für RigBridge.
 
 Definiert REST-Endpunkte für Funk-Geräte-Steuerung und Konfiguration.
+
+WICHTIG: Alle USB-Zugriffe werden durch TransportManager synchronisiert.
+Keine Race Conditions zwischen Health-Check und API-Befehlen.
 """
 
+import asyncio
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from typing import Any, Optional, Dict, List
 from pathlib import Path
 from dataclasses import asdict
 from enum import Enum
-import asyncio
 
 from ..config.logger import RigBridgeLogger
 from ..config.settings import ConfigManager, LogLevel
@@ -42,7 +45,7 @@ _global_executor_cache: Dict[str, CIVCommandExecutor] = {}
 
 def _get_or_create_executor() -> CIVCommandExecutor:
     """
-    Globale Executor-Instanceanforderung (Singleton).
+    Globale Executor-Instanz (Singleton).
     Wird von Health-Check und API-Endpunkten gemeinsam genutzt.
     """
     cache_key = 'default'
@@ -184,6 +187,35 @@ class StatusResponse(BaseModel):
     features: List[str]
 
 
+class ConfigResponse(BaseModel):
+    """Response mit aktueller Konfiguration (Secrets maskiert)."""
+    usb: Dict[str, Any] = Field(description='USB-Konfiguration')
+    api: Dict[str, Any] = Field(description='API-Konfiguration')
+    wavelog: Dict[str, Any] = Field(description='Wavelog-Konfiguration')
+    secret_provider: Dict[str, Any] = Field(description='Secret-Provider-Konfiguration')
+    device: Dict[str, Any] = Field(description='Geräte-Konfiguration')
+
+
+class ConfigUpdateResponse(BaseModel):
+    """Response nach Config-Update."""
+    success: bool = Field(description='Update erfolgreich')
+    message: str = Field(description='Bestätigungmeldung')
+
+
+class CommandListResponse(BaseModel):
+    """Response mit Liste verfügbarer Befehle."""
+    commands: List[str] = Field(
+        description='Liste der verfügbaren Befehlsnamen aus YAML'
+    )
+
+
+class DeviceListResponse(BaseModel):
+    """Response mit Liste verfügbarer Geräte."""
+    devices: List[DeviceInfo] = Field(
+        description='Liste der verfügbaren Funkgeräte'
+    )
+
+
 class USBConfigUpdate(BaseModel):
     port: Optional[str] = None
     baud_rate: Optional[int] = None
@@ -251,6 +283,9 @@ async def _perform_usb_health_check() -> USBStatus:
     Sendet den 'read_transceiver_id' Befehl und evaluiert die Antwort.
     Bei Fehler wird automatisch ein Reconnect-Versuch unternommen.
 
+    WICHTIG: Nutzt TransportManager automatisch via executor.execute_command()
+    für Synchronisierung.
+
     Returns:
         USBStatus: disconnected, attached oder connected
     """
@@ -259,26 +294,27 @@ async def _perform_usb_health_check() -> USBStatus:
 
         # Prüfe, ob USB-Connection existiert
         if not executor.usb_connection:
-            logger.debug('Keine USB-Connection vorhanden')
+            logger.debug('No USB connection available')
             return USBStatus.DISCONNECTED
 
         # Prüfe, ob Port geöffnet werden kann
         if not executor.usb_connection.is_connected:
-            logger.debug('USB getrennt, versuche Reconnect...')
-            if not executor.usb_connection.reconnect():
-                logger.debug('Reconnect fehlgeschlagen - Port nicht verfügbar')
-                return USBStatus.DISCONNECTED
-            logger.info('Port geöffnet')
+            if not executor.usb_connection.connect():
+                logger.debug('USB port cannot be opened')
+                return USBStatus.ATTACHED
 
         # Port ist offen - teste ob Gerät antwortet
-        result = executor.execute_command('read_transceiver_id')
+        # execute_command ist ASYNC und nutzt TransportManager automatisch
+        result = await executor.execute_command(
+            'read_transceiver_id',
+            is_health_check=True,
+        )
 
         if result.success:
-            logger.debug(f'USB health check OK: ID = 0x{result.data.get("id", 0):02X}')
+            logger.debug('Device responded to health check')
             return USBStatus.CONNECTED
         else:
-            logger.debug(f'Gerät antwortet nicht: {result.error}')
-            # Port offen, aber Gerät antwortet nicht (z.B. ausgeschaltet)
+            logger.debug(f'Health check failed: {result.error}')
             return USBStatus.ATTACHED
 
     except Exception as e:
@@ -286,12 +322,12 @@ async def _perform_usb_health_check() -> USBStatus:
         return USBStatus.DISCONNECTED
 
 
-async def start_usb_health_check_task(check_interval: int = 5):
+async def start_usb_health_check_task(check_interval: int = 10):
     """
     Startet zyklische USB-Verbindungsprüfung im Hintergrund.
 
     Args:
-        check_interval: Prüfintervall in Sekunden (Standard: 5)
+        check_interval: Prüfintervall in Sekunden (Standard: 10)
     """
     if _health_check_state['running']:
         logger.warning('USB health check task already running')
@@ -323,11 +359,8 @@ async def start_usb_health_check_task(check_interval: int = 5):
                     consecutive_failures = 0
                 elif current_status != USBStatus.CONNECTED:
                     consecutive_failures += 1
-                    if consecutive_failures % 6 == 1:  # Log jeden 30 Sekunden bei Fehler
-                        logger.warning(
-                            f'USB status: {current_status.value} '
-                            f'({consecutive_failures * check_interval}s)'
-                        )
+                    if consecutive_failures % 6 == 1:
+                        logger.warning(f'Health check failed {consecutive_failures} times')
 
                 _health_check_state['usb_status'] = current_status
                 _health_check_state['last_check'] = asyncio.get_event_loop().time()
@@ -395,8 +428,8 @@ def create_router() -> APIRouter:
         degraded_mode = False
         secret_provider_available = True
 
-        # Prüfe USB-Verbindung durch Ausführung des 'read_transceiver_id' Befehls
-        usb_status = await _perform_usb_health_check()
+        # Nutze zyklisch geprüften USB-Status (vom Health-Check)
+        usb_status = get_usb_status()
 
         if config.wavelog.enabled and config.wavelog.api_key_secret_ref:
             try:
@@ -419,10 +452,11 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/config',
+        response_model=ConfigResponse,
         tags=['Config'],
         summary='Aktuelle Konfiguration abrufen',
     )
-    async def get_config() -> Dict[str, Any]:
+    async def get_config() -> ConfigResponse:
         """Gibt die aktuelle Konfiguration zurück (Secrets maskiert)."""
         config = ConfigManager.get()
 
@@ -444,10 +478,11 @@ def create_router() -> APIRouter:
 
     @router.put(
         '/config',
+        response_model=ConfigUpdateResponse,
         tags=['Config'],
         summary='Konfiguration aktualisieren',
     )
-    async def update_config(request: ConfigUpdateRequest) -> Dict[str, Any]:
+    async def update_config(request: ConfigUpdateRequest) -> ConfigUpdateResponse:
         """Aktualisiert Konfiguration und speichert sie persistent in config.json."""
         config = ConfigManager.get()
         payload = request.model_dump(exclude_none=True)
@@ -460,14 +495,12 @@ def create_router() -> APIRouter:
             api_values = payload['api']
             if 'log_level' in api_values:
                 try:
-                    api_values['log_level'] = LogLevel(api_values['log_level'].upper())
+                    config.api.log_level = LogLevel(api_values['log_level'])
                 except ValueError as exc:
-                    raise HTTPException(
-                        status_code=422,
-                        detail='Invalid log_level. Allowed: DEBUG, INFO, WARNING, ERROR',
-                    ) from exc
+                    raise HTTPException(status_code=422, detail=f'Invalid log_level: {exc}')
             for key, value in api_values.items():
-                setattr(config.api, key, value)
+                if key != 'log_level':
+                    setattr(config.api, key, value)
 
         if 'wavelog' in payload:
             for key, value in payload['wavelog'].items():
@@ -483,10 +516,10 @@ def create_router() -> APIRouter:
 
         ConfigManager.save()
 
-        return {
-            'success': True,
-            'message': 'Configuration updated',
-        }
+        return ConfigUpdateResponse(
+            success=True,
+            message='Configuration updated',
+        )
 
     # ========================================================================
     # ALLGEMEINE COMMAND ENDPOINTS
@@ -506,11 +539,12 @@ def create_router() -> APIRouter:
         """
         Führt einen read-only Befehl aus.
 
+        TransportManager kümmert sich automatisch um Synchronisierung.
         Beispiel: `/api/command/read_s_meter`
         """
         try:
             executor = get_executor()
-            result = executor.execute_command(command_name)
+            result = await executor.execute_command(command_name)
 
             if result.success:
                 logger.info(f'Command executed: {command_name}')
@@ -520,10 +554,11 @@ def create_router() -> APIRouter:
                     data=result.data,
                 )
             else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=result.error or 'Command failed',
-                )
+                logger.warning(f'Command failed: {command_name} - {result.error}')
+                raise HTTPException(status_code=400, detail=result.error)
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f'Command execution error: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -541,6 +576,8 @@ def create_router() -> APIRouter:
         """
         Führt einen Befehl mit Daten aus.
 
+        TransportManager kümmert sich automatisch um Synchronisierung.
+
         Beispiel:
         ```json
         {
@@ -551,10 +588,7 @@ def create_router() -> APIRouter:
         """
         try:
             executor = get_executor()
-            result = executor.execute_command(
-                command_name,
-                data=request.data,
-            )
+            result = await executor.execute_command(command_name, data=request.data)
 
             if result.success:
                 logger.info(f'Command executed: {command_name}')
@@ -564,10 +598,11 @@ def create_router() -> APIRouter:
                     data=result.data,
                 )
             else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=result.error or 'Command failed',
-                )
+                logger.warning(f'Command failed: {command_name} - {result.error}')
+                raise HTTPException(status_code=400, detail=result.error)
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f'Command execution error: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -586,21 +621,18 @@ def create_router() -> APIRouter:
         """Liest die aktuelle Betriebsfrequenz des Geräts."""
         try:
             executor = get_executor()
-            result = executor.execute_command('read_operating_frequency')
+            result = await executor.execute_command('read_operating_frequency')
 
             if result.success and result.data:
-                frequency_hz = result.data.get('frequency', 145500000)
-                vfo = result.data.get('vfo', 'A')
-                logger.debug(f'Frequency read: {frequency_hz} Hz (VFO {vfo})')
-                return FrequencyResponse(
-                    frequency_hz=frequency_hz,
-                    vfo=vfo,
-                )
+                frequency = result.data.get('frequency', 0)
+                logger.info(f'Frequency read: {frequency} Hz')
+                return FrequencyResponse(frequency_hz=frequency)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=result.error or 'Failed to read frequency',
+                    detail=result.error or 'Failed to read frequency'
                 )
+
         except HTTPException:
             raise
         except Exception as e:
@@ -617,7 +649,7 @@ def create_router() -> APIRouter:
         """Setzt eine neue Betriebsfrequenz."""
         try:
             executor = get_executor()
-            result = executor.execute_command(
+            result = await executor.execute_command(
                 'set_operating_frequency',
                 data={'frequency': request.frequency_hz},
             )
@@ -630,12 +662,15 @@ def create_router() -> APIRouter:
                     data={'frequency_hz': request.frequency_hz, 'status': 'OK'},
                 )
             else:
+                logger.warning(f'Failed to set frequency: {result.error}')
                 return CommandResponse(
                     success=False,
                     command='set_operating_frequency',
-                    data={'status': 'NG'},
                     error=result.error or 'Failed to set frequency',
                 )
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f'Frequency set failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -654,21 +689,18 @@ def create_router() -> APIRouter:
         """Liest den aktuellen Betriebsmodus des Geräts."""
         try:
             executor = get_executor()
-            result = executor.execute_command('read_operating_mode')
+            result = await executor.execute_command('read_operating_mode')
 
             if result.success and result.data:
-                mode = result.data.get('mode', 'CW')
-                filter_val = result.data.get('filter')
-                logger.debug(f'Mode read: {mode}')
-                return ModeResponse(
-                    mode=mode,
-                    filter=filter_val,
-                )
+                mode = result.data.get('mode', 'UNKNOWN')
+                logger.info(f'Mode read: {mode}')
+                return ModeResponse(mode=mode)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=result.error or 'Failed to read mode',
+                    detail=result.error or 'Failed to read mode'
                 )
+
         except HTTPException:
             raise
         except Exception as e:
@@ -685,7 +717,7 @@ def create_router() -> APIRouter:
         """Setzt einen neuen Betriebsmodus."""
         try:
             executor = get_executor()
-            result = executor.execute_command(
+            result = await executor.execute_command(
                 'set_operating_mode',
                 data={'mode': request.mode},
             )
@@ -698,12 +730,15 @@ def create_router() -> APIRouter:
                     data={'mode': request.mode, 'status': 'OK'},
                 )
             else:
+                logger.warning(f'Failed to set mode: {result.error}')
                 return CommandResponse(
                     success=False,
                     command='set_operating_mode',
-                    data={'status': 'NG'},
                     error=result.error or 'Failed to set mode',
                 )
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f'Mode set failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -722,22 +757,19 @@ def create_router() -> APIRouter:
         """Liest den aktuellen S-Meter-Wert des Geräts."""
         try:
             executor = get_executor()
-            result = executor.execute_command('read_s_meter')
+            result = await executor.execute_command('read_s_meter')
 
             if result.success and result.data:
-                # S-Meter-Interpolation: 0x00 = 0dB, 0x78 = 54dB, 0xF1 = 114dB
-                raw_value = result.data.get('level_high', 0)
-                level_db = interpolate_s_meter(raw_value)
-                logger.debug(f'S-Meter read: {raw_value} (0x{raw_value:02X}) -> {level_db:.1f} dB')
-                return SMeterResponse(
-                    level_db=level_db,
-                    level_raw=raw_value,
-                )
+                raw_value = result.data.get('level_raw', 0)
+                db_value = interpolate_s_meter(raw_value)
+                logger.info(f'S-Meter read: {raw_value} (raw) = {db_value} dB')
+                return SMeterResponse(level_db=db_value, level_raw=raw_value)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=result.error or 'Failed to read S-meter',
+                    detail=result.error or 'Failed to read S-meter'
                 )
+
         except HTTPException:
             raise
         except Exception as e:
@@ -750,16 +782,17 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/commands',
+        response_model=CommandListResponse,
         tags=['Info'],
         summary='Verfügbare Befehle auflisten',
     )
-    async def list_commands() -> Dict[str, List[str]]:
+    async def list_commands() -> CommandListResponse:
         """Gibt eine Liste aller verfügbaren Befehle zurück."""
         try:
             executor = get_executor()
             commands = executor.parser.list_commands()
             logger.debug(f'Listed {len(commands)} available commands')
-            return {'commands': sorted(commands)}
+            return CommandListResponse(commands=sorted(commands))
         except Exception as e:
             logger.error(f'Command list failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -781,26 +814,23 @@ def create_router() -> APIRouter:
 
             # Prüfe ob Wavelog aktiviert ist
             if not config.wavelog.enabled:
-                logger.warning('Wavelog is disabled')
                 return WavelogTestResponse(
                     success=False,
-                    message='Wavelog is disabled in configuration',
+                    message='Wavelog is not enabled in configuration',
                 )
 
             # Prüfe ob Secret-Ref vorhanden ist
             if not config.wavelog.api_key_secret_ref:
-                logger.warning('Wavelog API key secret reference not configured')
                 return WavelogTestResponse(
                     success=False,
-                    message='API key secret reference not configured',
+                    message='Wavelog API key secret reference not configured',
                 )
 
             # Versuche Secret zu laden
             try:
                 provider = create_secret_provider(config)
-                api_key = provider.get_secret(config.wavelog.api_key_secret_ref)
+                provider.get_secret(config.wavelog.api_key_secret_ref)
             except SecretProviderError as e:
-                logger.warning(f'Secret provider error: {e}')
                 return WavelogTestResponse(
                     success=False,
                     message=f'Secret provider error: {str(e)}',
@@ -812,7 +842,7 @@ def create_router() -> APIRouter:
             return WavelogTestResponse(
                 success=True,
                 message='Wavelog is reachable and authenticated',
-                station_count=10,  # Mock-Wert für UI-Test
+                station_count=10,
             )
 
         except Exception as e:
@@ -838,7 +868,6 @@ def create_router() -> APIRouter:
             config = ConfigManager.get()
 
             if not config.wavelog.enabled:
-                logger.warning('Wavelog is disabled')
                 return WavelogStationsResponse(stations=[])
 
             # Mock-Daten für UI-Test
@@ -862,10 +891,11 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/devices',
+        response_model=DeviceListResponse,
         tags=['Info'],
         summary='Verfügbare Funkgeräte auflisten',
     )
-    async def list_devices() -> Dict[str, List[DeviceInfo]]:
+    async def list_devices() -> DeviceListResponse:
         """
         Gibt eine Liste aller verfügbaren Funkgeräte aus den YAML-Protokolldateien zurück.
 
@@ -878,35 +908,24 @@ def create_router() -> APIRouter:
             devices = []
 
             if protocols_base.exists():
-                # Iteriere über alle Hersteller-Ordner
-                for mfg_dir in protocols_base.iterdir():
-                    if mfg_dir.is_dir() and not mfg_dir.name.startswith('_'):
-                        manufacturer = mfg_dir.name
-
-                        # Suche nach *.yaml Dateien im Hersteller-Ordner
-                        for yaml_file in mfg_dir.glob('*.yaml'):
-                            if yaml_file.name == f'{manufacturer}.yaml':
-                                # Überspringe die Hersteller-YAML
-                                continue
-
-                            protocol_file = yaml_file.stem  # Dateiname ohne .yaml
-                            # Einfacher Gerätename aus Dateiname
-                            device_name = f'{manufacturer.title()} {protocol_file.upper()}'
-
-                            devices.append(
-                                DeviceInfo(
-                                    name=device_name,
+                for manufacturer_dir in protocols_base.iterdir():
+                    if manufacturer_dir.is_dir():
+                        for protocol_file in manufacturer_dir.glob('*.yaml'):
+                            if protocol_file.name not in ['manufacturer.yaml', 'meta.yaml']:
+                                device_name = protocol_file.stem
+                                manufacturer = manufacturer_dir.name
+                                devices.append(DeviceInfo(
+                                    name=f'{manufacturer.upper()} {device_name.upper()}',
                                     manufacturer=manufacturer,
-                                    protocol_file=protocol_file,
-                                )
-                            )
+                                    protocol_file=device_name,
+                                ))
 
             logger.info(f'Listed {len(devices)} available devices')
-            return {'devices': sorted(devices, key=lambda d: d.name)}
+            return DeviceListResponse(devices=sorted(devices, key=lambda d: d.name))
 
         except Exception as e:
             logger.error(f'Device list failed: {e}')
-            return {'devices': []}
+            return DeviceListResponse(devices=[])
 
     return router
 
