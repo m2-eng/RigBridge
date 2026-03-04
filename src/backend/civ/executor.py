@@ -11,6 +11,7 @@ import yaml
 from enum import Enum
 
 from ..config.logger import RigBridgeLogger
+from ..usb.transport_manager import TransportManager
 
 logger = RigBridgeLogger.get_logger(__name__)
 
@@ -259,6 +260,7 @@ class CIVCommandExecutor:
         """
         self.parser = ProtocolParser(protocol_file, manufacturer_file)
         self.usb_connection = usb_connection
+        self.transport_manager = TransportManager(usb_connection=usb_connection)
         logger.info(
             f'CIV Command Executor initialized with '
             f'{len(self.parser.commands)} commands'
@@ -267,19 +269,22 @@ class CIVCommandExecutor:
     def set_usb_connection(self, usb_connection) -> None:
         """Setzt die USB-Verbindung für Befehlsausführung."""
         self.usb_connection = usb_connection
+        self.transport_manager.set_usb_connection(usb_connection)
         logger.debug('USB connection set for CIV executor')
 
-    def execute_command(
+    async def execute_command(
         self,
         command_name: str,
         data: Optional[Dict[str, Any]] = None,
+        is_health_check: bool = False,
     ) -> CommandResult:
         """
-        Führt einen CI-V Befehl aus.
+        Führt einen CI-V Befehl aus (mit TransportManager-Synchronisierung).
 
         Args:
             command_name: Name des Befehls (aus YAML)
             data: Optional: Daten für gebundene Befehle (PUT)
+            is_health_check: True für Health-Check Operationen (kürzere Timeouts)
 
         Returns:
             CommandResult mit Ergebnis und Daten
@@ -303,41 +308,20 @@ class CIVCommandExecutor:
             if error:
                 return CommandResult(success=False, error=error)
 
-            # Sende über USB falls verfügbar (und nicht simuliert)
-            if self.usb_connection and not self.usb_connection.simulate:
-                from ..usb.connection import SerialFrameData
-                frame_data = SerialFrameData(frame_bytes)
+            # Sende über Transport Manager mit Synchronisierung
+            response_data = await self.transport_manager.execute_command_on_device(
+                frame_bytes=frame_bytes,
+                command_name=command_name,
+                is_health_check=is_health_check,
+            )
 
-                if not self.usb_connection.send_frame(frame_data):
-                    return CommandResult(
-                        success=False,
-                        error='Failed to send frame via USB'
-                    )
-
-                # Lese Response (mit Echo-Filter)
-                response_data = None
-                for _ in range(3):
-                    candidate = self.usb_connection.read_response(timeout=0.7)
-                    if not candidate:
-                        continue
-                    if candidate.raw_bytes == frame_bytes:
-                        logger.debug('Echo-Frame erkannt (TX==RX), warte auf echte Antwort...')
-                        continue
-                    response_data = candidate
-                    break
-
-                if not response_data:
-                    return CommandResult(
-                        success=False,
-                        error='No valid response from device (only echo or timeout)'
-                    )
-
-                # Parse Response
-                return self.parse_response(response_data.raw_bytes, command_name)
-            else:
-                # Fallback: Simuliere erfolgreiche Ausführung (für Tests ohne echte USB)
+            # Falls keine echte Hardware, simuliere Antwort
+            if response_data is None:
                 result_data = self._simulate_command_response(command_name, data)
                 return CommandResult(success=True, data=result_data)
+
+            # Parse echte Antwort von Gerät
+            return self.parse_response(response_data.raw_bytes, command_name)
 
         except Exception as e:
             logger.error(f'Command execution failed: {e}')

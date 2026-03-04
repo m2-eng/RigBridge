@@ -64,7 +64,41 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 4. Fehlerbehandlung
+## 4. Async/Await Patterns in Python
+
+**BINDEND seit TransportManager-Implementation (Issue #10):**
+
+- **`execute_command()` ist immer `async`:** Die Funktion `CIVCommandExecutor.execute_command()` muss IMMER als `async def` implementiert sein.
+- **Immer `await` verwenden:** Alle Aufrufe zu `execute_command()` müssen mit `await` erfolgen:
+  ```python
+  # ✅ RICHTIG
+  result = await executor.execute_command('read_frequency')
+  
+  # ❌ FALSCH – führt zu "Coroutine was never awaited"
+  result = executor.execute_command('read_frequency')
+  ```
+
+- **Async API-Endpunkte:** Alle FastAPI-Endpunkte, die `execute_command()` aufrufen, müssen `async def` sein:
+  ```python
+  @router.get("/rig/frequency")
+  async def get_frequency() -> FrequencyResponse:  # ← async!
+      result = await executor.execute_command('read_operating_frequency')  # ← await!
+      return FrequencyResponse(frequency_hz=result.data['frequency'])
+  ```
+
+- **Async Tests:** Tests mit `execute_command()` müssen mit `@pytest.mark.asyncio` und `async def` sein:
+  ```python
+  @pytest.mark.asyncio
+  async def test_frequency_read(executor):  # ← async!
+      result = await executor.execute_command('read_operating_frequency')  # ← await!
+      assert result.success
+  ```
+
+- **TransportManager handhabt Locks:** Niemals manuell Locks in der API setzen! Der TransportManager (`src/backend/usb/transport_manager.py`) koordiniert alle USB-Zugriffe zentral.
+
+---
+
+## 5. Fehlerbehandlung
 
 **Python:**
 - Spezifische Ausnahmen fangen, nie blankes `except:`:
@@ -90,7 +124,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 5. Sicherheit im Code
+## 6. Sicherheit im Code
 
 - **Secrets nie loggen:** API-Keys und Passwörter dürfen nicht in Log-Aufrufen auftauchen, auch nicht auf `DEBUG`-Level.
 - **Secrets nie in API-Responses:** Konfigurationsendpunkte maskieren Secrets (`"api_key": "***"`).
@@ -106,7 +140,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 6. YAML-Protokolldateien
+## 7. YAML-Protokolldateien
 
 - Alle YAML-Dateien folgen dem Schema, das in `protocols/general/` definiert ist.
 - Neue Befehlseinträge enthalten immer: `name`, `description`, `command`, `response` (falls zutreffend).
@@ -114,7 +148,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 7. Commits & Branches
+## 8. Commits & Branches
 
 - Commit-Messages folgen dem **Conventional Commits**-Format:
   `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
@@ -123,7 +157,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 8. Tests
+## 9. Tests
 
 - Jedes Backend-Modul hat eine korrespondierende Testdatei in `tests/backend/`.
 - **Python:** `pytest` als Test-Framework; Dateiname `test_<modulname>.py`.
@@ -133,7 +167,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 9. Dokumentation
+## 10. Dokumentation
 
 - **Python:** Öffentliche Funktionen und Klassen erhalten Docstrings (Google-Style).
 - **JavaScript:** Öffentliche Funktionen erhalten JSDoc-Kommentare.
@@ -142,7 +176,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 10. Docker
+## 11. Docker
 
 - Docker ist ausschließlich für **Linux** vorgesehen (Produktion + optionale Linux-Entwicklung).
 - Auf **Windows** wird die Anwendung **nativ** gestartet – kein Docker.
@@ -161,7 +195,7 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 
 ---
 
-## 11. Plattformkompatibilität (Linux & Windows)
+## 12. Plattformkompatibilität (Linux & Windows)
 
 - **Dateipfade:** Immer `pathlib.Path` verwenden. Nie `+`-Konkatenation oder `os.path.join`:
   ```python

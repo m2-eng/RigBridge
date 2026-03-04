@@ -55,6 +55,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | USB-06 | ✅ Umgesetzt | Bei Verbindungsabbruch versucht das System automatisch, die Verbindung nach konfigurierbarem Intervall wiederherzustellen. |
 | USB-07 | ✅ Umgesetzt | Das System unterstützt sowohl Linux (`/dev/tty*`) als auch Windows (`COM*`) ohne Code-Änderung. |
 | USB-08 | ✅ Umgesetzt | Die Verbindung zum Funkgerät soll zyklisch mittels 'read_transceiver_id' Befehl geprüft werden, da hier eine Antwort erwartet wird. Bei Verbindungsverlust wird automatisch ein Reconnect versucht. |
+| USB-09 | ✅ Umgesetzt | **TransportManager für Ressourcen-Synchronisierung:** Nur EIN Befehl hat zu einem Zeitpunkt Zugriff auf die USB-Ressource. Verhindert Race Conditions zwischen Health-Check und API-Anfragen durch zentrale Koordination mit `asyncio.Lock()`. API-Anfragen erhalten HTTP 503 wenn Lock nicht in Zeit erworben wird. |
 
 ---
 

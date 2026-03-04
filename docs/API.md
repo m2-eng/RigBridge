@@ -2,6 +2,31 @@
 
 Diese Dokumentation beschreibt die REST-API und die Anwendungsstruktur von RigBridge.
 
+## ⚡ Wichtig: Async-Ressourcenverwaltung
+
+**Alle API-Anfragen durchlaufen den TransportManager** - eine zentrale Komponente, die alle USB-Kommunikation verwaltet.
+
+### Warum TransportManager?
+
+Der TransportManager bietet folgende Vorteile:
+
+- **Sequenzielle Befehlsausführung**: Es wird immer nur ein Befehl auf einmal über USB gesendet, nicht mehrere gleichzeitig
+- **Race-Condition-freie Kommunikation**: Verhindert Konflikte und Datenverschmutzung bei gleichzeitigen Anfragen
+- **Garantierte Befehlsreihenfolge**: Befehle werden in der Reihenfolge ausgeführt, in der sie eingehen
+- **Asynchrone Verarbeitung**: Requests werden gequeutet und asynchron verarbeitet
+
+### HTTP 503 - USB ist beschäftigt
+
+Falls der USB-Port momentan einen Befehl verarbeitet, kann die API mit einem **HTTP 503 Service Unavailable** antworten. Dies ist kein Fehler, sondern normales Verhalten:
+
+- Die API ist möglicherweise momentan in der Verarbeitung eines vorherigen Befehls
+- Der Client sollte den Request nach kurzer Zeit wiederholen
+- Dies ist ein Sicherheitsmechanismus, um die USB-Stabilität zu wahren
+
+Weitere technische Details zur Architektur findest du in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
 ## 📋 Übersicht
 
 RigBridge bietet folgende Haupt-APIs:
