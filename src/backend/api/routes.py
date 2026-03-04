@@ -187,6 +187,35 @@ class StatusResponse(BaseModel):
     features: List[str]
 
 
+class ConfigResponse(BaseModel):
+    """Response mit aktueller Konfiguration (Secrets maskiert)."""
+    usb: Dict[str, Any] = Field(description='USB-Konfiguration')
+    api: Dict[str, Any] = Field(description='API-Konfiguration')
+    wavelog: Dict[str, Any] = Field(description='Wavelog-Konfiguration')
+    secret_provider: Dict[str, Any] = Field(description='Secret-Provider-Konfiguration')
+    device: Dict[str, Any] = Field(description='Geräte-Konfiguration')
+
+
+class ConfigUpdateResponse(BaseModel):
+    """Response nach Config-Update."""
+    success: bool = Field(description='Update erfolgreich')
+    message: str = Field(description='Bestätigungmeldung')
+
+
+class CommandListResponse(BaseModel):
+    """Response mit Liste verfügbarer Befehle."""
+    commands: List[str] = Field(
+        description='Liste der verfügbaren Befehlsnamen aus YAML'
+    )
+
+
+class DeviceListResponse(BaseModel):
+    """Response mit Liste verfügbarer Geräte."""
+    devices: List[DeviceInfo] = Field(
+        description='Liste der verfügbaren Funkgeräte'
+    )
+
+
 class USBConfigUpdate(BaseModel):
     port: Optional[str] = None
     baud_rate: Optional[int] = None
@@ -423,10 +452,11 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/config',
+        response_model=ConfigResponse,
         tags=['Config'],
         summary='Aktuelle Konfiguration abrufen',
     )
-    async def get_config() -> Dict[str, Any]:
+    async def get_config() -> ConfigResponse:
         """Gibt die aktuelle Konfiguration zurück (Secrets maskiert)."""
         config = ConfigManager.get()
 
@@ -448,10 +478,11 @@ def create_router() -> APIRouter:
 
     @router.put(
         '/config',
+        response_model=ConfigUpdateResponse,
         tags=['Config'],
         summary='Konfiguration aktualisieren',
     )
-    async def update_config(request: ConfigUpdateRequest) -> Dict[str, Any]:
+    async def update_config(request: ConfigUpdateRequest) -> ConfigUpdateResponse:
         """Aktualisiert Konfiguration und speichert sie persistent in config.json."""
         config = ConfigManager.get()
         payload = request.model_dump(exclude_none=True)
@@ -485,10 +516,10 @@ def create_router() -> APIRouter:
 
         ConfigManager.save()
 
-        return {
-            'success': True,
-            'message': 'Configuration updated',
-        }
+        return ConfigUpdateResponse(
+            success=True,
+            message='Configuration updated',
+        )
 
     # ========================================================================
     # ALLGEMEINE COMMAND ENDPOINTS
@@ -751,16 +782,17 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/commands',
+        response_model=CommandListResponse,
         tags=['Info'],
         summary='Verfügbare Befehle auflisten',
     )
-    async def list_commands() -> Dict[str, List[str]]:
+    async def list_commands() -> CommandListResponse:
         """Gibt eine Liste aller verfügbaren Befehle zurück."""
         try:
             executor = get_executor()
             commands = executor.parser.list_commands()
             logger.debug(f'Listed {len(commands)} available commands')
-            return {'commands': sorted(commands)}
+            return CommandListResponse(commands=sorted(commands))
         except Exception as e:
             logger.error(f'Command list failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
@@ -859,10 +891,11 @@ def create_router() -> APIRouter:
 
     @router.get(
         '/devices',
+        response_model=DeviceListResponse,
         tags=['Info'],
         summary='Verfügbare Funkgeräte auflisten',
     )
-    async def list_devices() -> Dict[str, List[DeviceInfo]]:
+    async def list_devices() -> DeviceListResponse:
         """
         Gibt eine Liste aller verfügbaren Funkgeräte aus den YAML-Protokolldateien zurück.
 
@@ -888,11 +921,11 @@ def create_router() -> APIRouter:
                                 ))
 
             logger.info(f'Listed {len(devices)} available devices')
-            return {'devices': sorted(devices, key=lambda d: d.name)}
+            return DeviceListResponse(devices=sorted(devices, key=lambda d: d.name))
 
         except Exception as e:
             logger.error(f'Device list failed: {e}')
-            return {'devices': []}
+            return DeviceListResponse(devices=[])
 
     return router
 

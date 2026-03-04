@@ -6,7 +6,7 @@ Definiert die REST-API und initialisiert alle Services.
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -118,10 +118,34 @@ def create_app(
         description='REST API für Amateurfunk-Geräte-Steuerung',
         version=app_version,
         docs_url='/api/docs',
-        redoc_url='/api/redoc',
+        redoc_url=None,  # Wir erstellen einen custom ReDoc-Endpoint
         lifespan=lifespan,
         openapi_url='/api/openapi.json',
     )
+
+    # Custom ReDoc-Endpoint mit detailliertem HTML
+    @app.get('/api/redoc', include_in_schema=False)
+    async def redoc():
+        """ReDoc Dokumentation (dynamisch generiert)."""
+        return HTMLResponse("""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RigBridge API - ReDoc</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; }
+        body { font-family: 'Roboto', sans-serif; }
+    </style>
+</head>
+<body>
+    <redoc spec-url='/api/openapi.json'></redoc>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"></script>
+</body>
+</html>
+        """)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException):
