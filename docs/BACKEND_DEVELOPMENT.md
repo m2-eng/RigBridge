@@ -93,9 +93,9 @@ print(cmd.cmd, cmd.subcmd)  # (0x15, 0x02)
 cmd = executor.parser.get_command_by_code(0x14, 0x0A)
 ```
 
-### BefehlsausfÃ¼hrung (ASYNC mit TransportManager)
+### Befehlsausführung (ASYNC mit TransportManager)
 
-Die BefehlsausfÃ¼hrung ist jetzt **asynchron** und nutzt einen zentralen **TransportManager**, um Race Conditions zu vermeiden:
+Die Befehlsausführung ist jetzt **asynchron** und nutzt einen zentralen **TransportManager**, um Race Conditions zu vermeiden:
 
 ```python
 import asyncio
