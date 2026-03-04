@@ -466,7 +466,7 @@ def create_router() -> APIRouter:
                 try:
                     config.api.log_level = LogLevel(api_values['log_level'])
                 except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=f'Invalid log level: {exc}')
+                    raise HTTPException(status_code=422, detail=f'Invalid log_level: {exc}')
             for key, value in api_values.items():
                 if key != 'log_level':
                     setattr(config.api, key, value)

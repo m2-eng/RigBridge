@@ -74,7 +74,7 @@ def test_wavelog_test_endpoint(tmp_path):
 
     # Mit Wavelog nicht enabled ist success=false erwartet
     assert data['success'] is False
-    assert 'nicht aktiviert' in data['message'].lower() or 'disabled' in data['message'].lower()
+    assert 'wavelog is not enabled' in data['message'].lower() or 'disabled' in data['message'].lower()
 
 
 def test_wavelog_stations_endpoint(tmp_path):
