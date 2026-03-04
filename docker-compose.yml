@@ -8,8 +8,7 @@
 #   Den devices-Abschnitt im Service einkommentieren und den Pfad
 #   auf das tatsaechliche Geraet anpassen (/dev/ttyUSB0, /dev/ttyACM0, ...).
 #
-# Secrets und Passwoerter NUR ueber .env-Datei uebergeben (liegt in .gitignore).
-# Vorlage: .env.example
+# Konfiguration erfolgt ueber config.json; Secrets kommen ueber Secret-Provider.
 # ──────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -23,10 +22,10 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
     volumes:
-      # Konfigurationsdatei aus dem Host einbinden (read-only)
-      - ./config.yaml:/app/config.yaml:ro
-    env_file:
-      - .env
+      # Konfigurationsdatei aus dem Host einbinden (read-write fuer UI/API-Updates)
+      - ./config.json:/app/config.json
+      # Theme-Konfiguration aus dem Host einbinden (read-write fuer Anpassungen)
+      - ./theme.css:/app/src/frontend/assets/theme.css
     environment:
       - PYTHONUNBUFFERED=1
     # Geraete-Zugriff fuer USB/Serial (Linux) – bei Bedarf einkommentieren

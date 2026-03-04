@@ -4,13 +4,18 @@ FastAPI Hauptanwendung für RigBridge.
 Definiert die REST-API und initialisiert alle Services.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from contextlib import asynccontextmanager
 import logging
+import asyncio
 
 from ..config.logger import RigBridgeLogger, StructuredFormatter
 from ..config.settings import ConfigManager, LogLevel
-from .routes import create_router
+from .routes import create_router, start_usb_health_check_task, stop_usb_health_check_task
 
 # Logger-Initialisierung
 logger = RigBridgeLogger.get_logger(__name__)
@@ -39,6 +44,26 @@ def create_app(
     Returns:
         Konfigurierte FastAPI-Instanz
     """
+    # Lifespan Context Manager für Startup/Shutdown Events
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Lifespan-Handler für Startup/Shutdown Events."""
+        # Startup: Starte USB-Health-Check Background-Task
+        try:
+            asyncio.create_task(start_usb_health_check_task())
+            logger.info('USB health check task started')
+        except Exception as e:
+            logger.error(f'Failed to start USB health check task: {e}')
+
+        yield
+
+        # Shutdown: Stoppe USB-Health-Check
+        try:
+            await stop_usb_health_check_task()
+            logger.info('USB health check task stopped')
+        except Exception as e:
+            logger.error(f'Failed to stop USB health check task: {e}')
+
     # Logger konfigurieren
     level_map = {
         LogLevel.DEBUG: logging.DEBUG,
@@ -47,6 +72,7 @@ def create_app(
         LogLevel.ERROR: logging.ERROR,
     }
     RigBridgeLogger.configure(level=level_map[log_level])
+    redaction_filter = RigBridgeLogger.get_redaction_filter()
 
     # Uvicorn- und andere Logger auch mit StructuredFormatter konfigurieren
     for logger_name in ['uvicorn', 'uvicorn.error']:
@@ -61,6 +87,7 @@ def create_app(
         # Neue Handler mit StructuredFormatter hinzufügen
         stdout_handler = logging.StreamHandler()
         stdout_handler.setFormatter(StructuredFormatter())
+        stdout_handler.addFilter(redaction_filter)
         logger_obj.addHandler(stdout_handler)
 
     # Uvicorn Access Logger - speziell konfigurieren
@@ -75,6 +102,7 @@ def create_app(
     # Access-Handler mit StructuredFormatter hinzufügen
     access_handler = logging.StreamHandler()
     access_handler.setFormatter(StructuredFormatter())
+    access_handler.addFilter(redaction_filter)
     access_logger.addHandler(access_handler)
 
     # Konfiguration laden
@@ -91,8 +119,44 @@ def create_app(
         version=app_version,
         docs_url='/api/docs',
         redoc_url='/api/redoc',
+        lifespan=lifespan,
         openapi_url='/api/openapi.json',
     )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(_request: Request, exc: HTTPException):
+        code = f'HTTP_{exc.status_code}'
+        message = exc.detail if isinstance(exc.detail, str) else 'Request failed'
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                'error': True,
+                'code': code,
+                'message': message,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(_request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                'error': True,
+                'code': 'VALIDATION_ERROR',
+                'message': str(exc),
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(_request: Request, _exc: Exception):
+        return JSONResponse(
+            status_code=500,
+            content={
+                'error': True,
+                'code': 'INTERNAL_SERVER_ERROR',
+                'message': 'Internal server error',
+            },
+        )
 
     # Middleware für Logging
     @app.middleware('http')
@@ -115,6 +179,27 @@ def create_app(
     # Router registrieren
     router = create_router()
     app.include_router(router, prefix='/api')
+
+    # Statische Dateien: Frontend (nur wenn vorhanden)
+    frontend_path = Path(__file__).parent.parent.parent / 'frontend'
+    if frontend_path.exists():
+        # Mount static files aus src/frontend/assets und src/frontend/pages
+        assets_path = frontend_path / 'assets'
+        if assets_path.exists():
+            app.mount('/assets', StaticFiles(directory=assets_path), name='assets')
+
+        # Fallback: Alle unbekannten Routes geben index.html zurück (SPA-Navigation)
+        @app.get('/{full_path:path}')
+        async def serve_frontend(full_path: str):
+            """Serve index.html für SPA-Navigation, oder spezifische Datei."""
+            index_file = frontend_path / 'index.html'
+            if index_file.exists():
+                return FileResponse(index_file, media_type='text/html')
+            # Fallback: 404 wenn index.html nicht existiert
+            return JSONResponse(
+                status_code=404,
+                content={'error': True, 'code': 'NOT_FOUND', 'message': 'Frontend not configured'},
+            )
 
     logger.info('FastAPI application created and configured')
     return app

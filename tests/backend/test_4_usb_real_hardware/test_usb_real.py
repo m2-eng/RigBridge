@@ -62,12 +62,13 @@ class TestRealHardware:
         """Test: USB-Verbindung ist hergestellt."""
         assert usb_connection.is_connected, "USB sollte verbunden sein"
 
-    def test_read_frequency_from_ic905(self, usb_connection, protocol_file, request):
+    def test_read_frequency_from_ic905(self, usb_connection, protocol_file, manufacturer_file, request):
         """Test: Lese Frequenz vom IC-905."""
         logger.info("Lese Betriebsfrequenz vom IC-905...")
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 
@@ -92,12 +93,13 @@ class TestRealHardware:
         assert 0 < frequency_hz < 10_000_000_000, \
             f"Frequenz außerhalb plausiblen Bereichs: {frequency_mhz:.6f} MHz"
 
-    def test_read_mode_from_ic905(self, usb_connection, protocol_file):
+    def test_read_mode_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Lese Betriebsmodus vom IC-905."""
         logger.info("Lese Betriebsmodus vom IC-905...")
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 
@@ -109,12 +111,13 @@ class TestRealHardware:
         mode = result.data.get('mode', 'UNKNOWN')
         logger.info(f"✓ Modus: {mode}")
 
-    def test_read_s_meter_from_ic905(self, usb_connection, protocol_file):
+    def test_read_s_meter_from_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Lese S-Meter Level vom IC-905."""
         logger.info("Lese S-Meter vom IC-905...")
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 
@@ -129,12 +132,13 @@ class TestRealHardware:
         # S-Meter Werte sollten im Bereich 0x00-0xF1 sein
         assert 0 <= level <= 255, f"S-Meter außerhalb Bereich: 0x{level:02X}"
 
-    def test_multiple_reads_consistency(self, usb_connection, protocol_file):
+    def test_multiple_reads_consistency(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Mehrere Reads hintereinander (Konsistenz)."""
         logger.info("Lese Frequenz mehrfach zur Konsistenzprüfung...")
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 
@@ -153,12 +157,13 @@ class TestRealHardware:
             f"Frequenzschwankung zu groß: {max_diff} Hz"
 
     @pytest.mark.slow
-    def test_echo_detection_filtering(self, usb_connection, protocol_file):
+    def test_echo_detection_filtering(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Echo-Detection und -Filterung funktioniert."""
         logger.info("Teste Echo-Detection...")
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 
@@ -172,7 +177,7 @@ class TestRealHardware:
                 f"Echo-Filter Fehler bei {cmd_name}: {result.error}"
 
     @pytest.mark.skip(reason="SET-Befehle erfordern manuelles Überprüfen des Geräts")
-    def test_set_frequency_on_ic905(self, usb_connection, protocol_file):
+    def test_set_frequency_on_ic905(self, usb_connection, protocol_file, manufacturer_file):
         """Test: Setze Frequenz auf dem IC-905.
 
         ⚠️  WARNUNG: Dieser Test ändert die Frequenz des Geräts!
@@ -186,6 +191,7 @@ class TestRealHardware:
 
         executor = CIVCommandExecutor(
             protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file,
             usb_connection=usb_connection
         )
 

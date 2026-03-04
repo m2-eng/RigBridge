@@ -36,6 +36,15 @@
 ## 4. Fehlerbehandlung
 
 - Alle API-Endpunkte geben strukturierte Fehlermeldungen zurück (JSON mit `error`, `message`, `code`).
+- **Einheitliches Error-Format:** Alle Fehlerantworten folgen dem Schema:
+  ```json
+  {
+    "error": true,
+    "code": "HTTP_4XX|VALIDATION_ERROR|INTERNAL_SERVER_ERROR|<SPEZIFISCHER_CODE>",
+    "message": "Aussagekräftige Fehlerbeschreibung auf Deutsch"
+  }
+  ```
+  Beispiele für `code` Werte: `HTTP_400`, `HTTP_401`, `HTTP_404`, `VALIDATION_ERROR`, `INTERNAL_SERVER_ERROR`, `SECRET_PROVIDER_UNAVAILABLE`.
 - Hardware-Fehler (USB, Serial) werden abgefangen und als sinnvolle API-Fehler weitergeleitet.
 - Keine unbehandelten Ausnahmen (`unhandled exceptions`) in der Produktion.
 
@@ -46,8 +55,24 @@
 ### 5.1 Allgemein
 
 - Der CAT-API-Key wird niemals im Frontend-Code oder in versionierten Configs gespeichert.
-- Konfigurationsdateien mit Secrets werden ausschließlich über `.env`-Dateien verwaltet (sind in `.gitignore` aufgeführt).
+- Secrets werden ausschließlich über eine Secret-Provider verwaltet.
 - Secrets dürfen nicht in Log-Ausgaben erscheinen.
+- **Geheimnis-Referenzen (Secret References):** In der `config.json` werden Geheimnisse als Referenzen gespeichert, nicht als Klartext.
+  - Format: `<provider>:<path>#<key>` (Beispiel: `vault:rigbridge/wavelog#api_key`)
+  - Feldnamen für Secret-Referenzen enden auf `_secret_ref` (Beispiel: `api_key_secret_ref`)
+  - Beispiel in config.json:
+    ```json
+    {
+      "wavelog": {
+        "api_key_secret_ref": "vault:rigbridge/wavelog#api_key"
+      }
+    }
+    ```
+- **Logging-Redaction:** Sensible Daten werden in Log-Ausgaben automatisch gemäß folgender Muster ersetzt:
+  - Feldnamen (case-insensitive): `api_key`, `api-key`, `token`, `password`, `secret`, `authorization`
+  - Ersetzung: Der Wert wird durch `***` ersetzt
+  - Dies wird durch einen globalen `SecretRedactionFilter` auf allen Logger-Handlern durchgesetzt
+  - Beispiel Log-Ausgabe: `api_key: *** anstelle von `api_key: mySecretValue123`
 - API-Endpunkte, die Konfiguration zurückliefern (`GET /api/config`), dürfen **niemals** Secrets (API-Keys, Passwörter) im Response-Body enthalten. Felder werden durch `***` oder komplett weggelassen.
 
 ### 5.2 Docker-Container (Linux/Produktion)
@@ -62,7 +87,7 @@
 | Port nur lokal binden | `127.0.0.1:<port>:8080` (kein offenes `0.0.0.0`) |
 | Ressourcen-Limits | `deploy.resources.limits` (CPU + RAM) |
 | Netzwerk-Isolation | Dediziertes Docker-Netzwerk `rigbridge_net` |
-| Keine Secrets im Image | Nur über `.env` zur Laufzeit übergeben |
+| Keine Secrets im Image | Nur über Secret-Provider/Orchestrator-Secrets zur Laufzeit bereitstellen |
 
 - Bei jeder Aktualisierung der Base-Image-Version die Patch-Notes auf CVEs prüfen.
 - Das Image regelmäßig mit einem Scanner (z.B. `docker scout`, `trivy`) auf bekannte Schwachstellen prüfen.
@@ -84,8 +109,6 @@
 #### Speicherung von Secrets (API-Key)
 
 - Der Wavelog API-Key wird verschlüsselt gespeichert (kein Klartext im persistenten Speicher).
-- Die `.env`-Datei muss restriktive Dateiberechtigungen haben: `chmod 600 .env` (nur Eigentuemer lesbar).
-- Im Docker-Container wird die `.env`-Datei über `env_file` eingebunden und ist nicht im Image enthalten.
 - Für die Verschlüsselung sind plattformgeeignete Mechanismen zu verwenden (z.B. OS-Keychain / Windows Credential Manager oder ein dokumentiertes, sicheres Verschlüsselungsverfahren).
 - Unverschlüsselte Fallbacks dürfen nur als explizite, dokumentierte Ausnahme für lokale Entwicklungsumgebungen zulässig sein.
 

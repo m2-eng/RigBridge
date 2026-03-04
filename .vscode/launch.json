@@ -10,8 +10,7 @@
       "justMyCode": true,
       "args": [],
       "env": {
-        "PYTHONUNBUFFERED": "1",
-        "RIGBRIDGE_LOG_LEVEL": "DEBUG"
+        "PYTHONUNBUFFERED": "1"
       },
       "cwd": "${workspaceFolder}"
     },

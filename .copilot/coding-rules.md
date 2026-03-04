@@ -103,7 +103,6 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
   requests.post(wavelog_url, verify=False)
   ```
 - **Passwort-Eingabe im UI:** Der API-Key wird im Frontend als `<input type="password">` dargestellt.
-- **Dateirechte `.env`:** Bei der Inbetriebnahme auf Linux `chmod 600 .env` setzen (Dokumentation + ggf. Start-Skript).
 
 ---
 
@@ -148,8 +147,8 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
 - Docker ist ausschließlich für **Linux** vorgesehen (Produktion + optionale Linux-Entwicklung).
 - Auf **Windows** wird die Anwendung **nativ** gestartet – kein Docker.
 - Das `Dockerfile` liegt im Projekt-Root und baut ein Linux-Image (Multi-Stage: `builder` + `runtime`).
-- Keine Secrets in `Dockerfile` oder `docker-compose.yml`; Übergabe nur zur Laufzeit (z.B. `.env`/Environment), persistente Speicherung ausschließlich verschlüsselt.
-- `.dockerignore` ist Pflicht und schließt mindestens `__pycache__`, `.env`, `tests/` aus.
+- Keine Secrets in `Dockerfile` oder `docker-compose.yml`; Bezug ausschließlich zur Laufzeit über Secret-Provider/Orchestrator-Secrets, persistente Speicherung ausschließlich verschlüsselt.
+- `.dockerignore` ist Pflicht und schließt mindestens `__pycache__`, `tests/` aus.
 - `docker-compose.yml` wird für Linux-Entwicklung und Produktion genutzt.
 - **Sicherheit im Container** – folgende Maßnahmen sind verbindlich (siehe `docker-compose.yml`):
   - `security_opt: no-new-privileges:true`

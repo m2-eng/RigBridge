@@ -42,6 +42,12 @@ def protocol_file():
 
 
 @pytest.fixture(scope="session")
+def manufacturer_file():
+    """Herstellerdatei für Icom."""
+    return PROJECT_ROOT / "protocols" / "manufacturers" / "icom" / "icom.yaml"
+
+
+@pytest.fixture(scope="session")
 def config_manager():
     """ConfigManager Instanz."""
     return ConfigManager.initialize()

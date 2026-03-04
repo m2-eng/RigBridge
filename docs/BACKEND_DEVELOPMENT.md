@@ -12,7 +12,7 @@ RigBridge Backend ist eine **FastAPI**-basierte REST API zum Steuern von Icom-Fu
 src/backend/
 ├── config/          # Konfigurationsverwaltung & Logging
 │   ├── logger.py    # Zentralisiertes Logging
-│   └── settings.py  # Config-Management (JSON + env-vars)
+│   └── settings.py  # Config-Management (config.json)
 ├── civ/             # CI-V Protokoll-Parser & Executor
 │   └── executor.py  # Befehlsausführung
 ├── usb/             # USB/Serial-Kommunikation (TODO)
@@ -32,10 +32,7 @@ pip install -r requirements.txt
 ### 2. Konfiguration vorbereiten
 ```bash
 # config.json existiert bereits mit Defaults
-# Optional: Umgebungsvariablen setzen
-export RIGBRIDGE_API_HOST=0.0.0.0
-export RIGBRIDGE_API_PORT=8080
-export RIGBRIDGE_USB_PORT=/dev/ttyUSB0
+# Werte direkt in config.json setzen (z.B. api.host, api.port, usb.port)
 ```
 
 ### 3. Integration-Tests ausführen
@@ -65,7 +62,7 @@ logger.info("Nachricht mit standardisiertem Format")
 # Output: [2024-01-15 10:30:45,123] [INFO] [module.name] Nachricht mit standardisiertem Format
 ```
 
-### Konfiguration (12-Factor)
+### Konfiguration
 ```python
 from src.backend.config import ConfigManager
 
@@ -77,9 +74,7 @@ print(config.usb.port)           # "/dev/ttyUSB0"
 print(config.api.host)           # "127.0.0.1"
 ```
 
-**Precedence:** Env-Vars > config.json > Defaults
-
-Umgebungsvariablen: `RIGBRIDGE_*` (z.B. `RIGBRIDGE_USB_PORT`)
+Konfigurationsquelle: `config.json` (Single-Source-of-Truth für Non-Secrets)
 
 ### Protokoll-Parser (YAML → Python)
 ```python

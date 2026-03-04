@@ -7,8 +7,34 @@ auf stdout und optional in Logdateien.
 
 import logging
 import sys
+import re
 from typing import Optional
 from pathlib import Path
+
+
+class SecretRedactionFilter(logging.Filter):
+    """Maskiert sensible Werte in Log-Nachrichten."""
+
+    PATTERNS = [
+        re.compile(r'(?i)(api[_-]?key\s*[=:]\s*)([^\s,;]+)'),
+        re.compile(r'(?i)(token\s*[=:]\s*)([^\s,;]+)'),
+        re.compile(r'(?i)(authorization\s*:\s*bearer\s+)([^\s,;]+)'),
+        re.compile(r'(?i)(password\s*[=:]\s*)([^\s,;]+)'),
+        re.compile(r'(?i)(secret\s*[=:]\s*)([^\s,;]+)'),
+    ]
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        sanitized = message
+
+        for pattern in self.PATTERNS:
+            sanitized = pattern.sub(r'\1***', sanitized)
+
+        if sanitized != message:
+            record.msg = sanitized
+            record.args = ()
+
+        return True
 
 
 class StructuredFormatter(logging.Formatter):
@@ -72,6 +98,7 @@ class RigBridgeLogger:
         # Basis-Setup
         self.default_level = logging.INFO
         self.log_file: Optional[Path] = None
+        self._redaction_filter = SecretRedactionFilter()
         self._initialized = True
 
     @staticmethod
@@ -96,6 +123,7 @@ class RigBridgeLogger:
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setLevel(instance.default_level)
             stdout_handler.setFormatter(StructuredFormatter())
+            stdout_handler.addFilter(instance._redaction_filter)
             logger.addHandler(stdout_handler)
 
             # Datei-Handler (optional)
@@ -105,6 +133,7 @@ class RigBridgeLogger:
                 )
                 file_handler.setLevel(instance.default_level)
                 file_handler.setFormatter(StructuredFormatter())
+                file_handler.addFilter(instance._redaction_filter)
                 logger.addHandler(file_handler)
 
             instance._loggers[module_name] = logger
@@ -132,3 +161,9 @@ class RigBridgeLogger:
             logger.setLevel(level)
             for handler in logger.handlers:
                 handler.setLevel(level)
+
+    @staticmethod
+    def get_redaction_filter() -> SecretRedactionFilter:
+        """Gibt den global verwendeten Secret-Redaction-Filter zurück."""
+        instance = RigBridgeLogger()
+        return instance._redaction_filter

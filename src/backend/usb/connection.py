@@ -55,6 +55,14 @@ class USBConnection:
     def _connect(self) -> bool:
         """Stellt eine echte serielle Verbindung her."""
         try:
+            # Schließe alte Verbindung falls noch offen
+            if self.serial_port and self.serial_port.is_open:
+                try:
+                    self.serial_port.close()
+                    logger.debug(f"Alte Verbindung zu {self.config.port} geschlossen")
+                except Exception:
+                    pass
+
             self.serial_port = serial.Serial(
                 port=self.config.port,
                 baudrate=self.config.baud_rate,
@@ -65,6 +73,7 @@ class USBConnection:
                 write_timeout=self.config.timeout,
             )
             self.is_connected = True
+            self.last_error = None
             logger.info(
                 f"USB verbunden: {self.config.port} @ "
                 f"{self.config.baud_rate} baud"
@@ -108,8 +117,11 @@ class USBConnection:
             True wenn erfolgreich, False bei Fehler
         """
         if not self.is_connected and not self.simulate:
-            logger.error("USB nicht verbunden, kann Frame nicht senden")
-            return False
+            # Versuche automatisch zu reconnecten
+            logger.warning("USB nicht verbunden, versuche Reconnect...")
+            if not self.reconnect_if_needed():
+                logger.error("Reconnect fehlgeschlagen, kann Frame nicht senden")
+                return False
 
         try:
             # Formatiere Bytes als HEX für Debug-Output
@@ -133,6 +145,20 @@ class USBConnection:
             self.last_error = str(e)
             self.is_connected = False
             logger.error(f"Fehler beim Frame-Versand: {e}")
+
+            # Versuche einmalig zu reconnecten
+            logger.info("Versuche automatischen Reconnect nach Fehler...")
+            if self.reconnect_if_needed():
+                # Retry nach erfolgreichem Reconnect
+                logger.info("Reconnect erfolgreich, wiederhole Frame-Versand...")
+                try:
+                    bytes_sent = self.serial_port.write(frame_data.raw_bytes)
+                    if bytes_sent == len(frame_data.raw_bytes):
+                        logger.info(f"[TX] Frame nach Reconnect gesendet ({bytes_sent} bytes)")
+                        return True
+                except Exception as retry_error:
+                    logger.error(f"Retry nach Reconnect fehlgeschlagen: {retry_error}")
+
             return False
 
     def read_response(self, timeout: Optional[float] = None) -> Optional[SerialFrameData]:
@@ -206,7 +232,25 @@ class USBConnection:
             self.last_error = str(e)
             self.is_connected = False
             logger.error(f"Fehler beim Response-Lesen: {e}")
+
+            # Versuche automatischen Reconnect
+            logger.info("Versuche automatischen Reconnect nach Lesefehler...")
+            if self.reconnect_if_needed():
+                logger.info("Reconnect erfolgreich nach Lesefehler")
+
             return None
+
+    def reconnect(self) -> bool:
+        """
+        Erzwingt einen Reconnect durch explizites Disconnect + Connect.
+
+        Returns:
+            True wenn erfolgreich verbunden, False bei Fehler
+        """
+        logger.info(f"Erzwinge Reconnect für {self.config.port}...")
+        self.disconnect()
+        time.sleep(0.5)  # Kurze Pause für Port-Release
+        return self._connect()
 
     def reconnect_if_needed(self) -> bool:
         """
@@ -223,7 +267,7 @@ class USBConnection:
         )
         time.sleep(self.config.reconnect_interval)
 
-        return self.connect()
+        return self.reconnect()
 
     def __enter__(self):
         """Context Manager support."""
