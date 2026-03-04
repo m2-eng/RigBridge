@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RigBridge - Amateurfunk-Geräte-Steuerung</title>
+  <link rel="stylesheet" href="/assets/base-styles.css">
+  <link rel="stylesheet" href="/assets/components.css">
+  <link rel="stylesheet" href="/assets/theme.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-content">
+      <h1 class="app-title">RigBridge</h1>
+      <p class="app-subtitle">Amateurfunk-Geräte-Steuerung & Wavelog-Integration</p>
+    </div>
+    <button id="theme-toggle" class="btn-icon" title="Light/Dark mode umschalten">
+      🌙
+    </button>
+  </header>
+
+  <main class="app-main">
+    <!-- Statusbar -->
+    <section class="status-bar">
+      <div class="status-item">
+        <span class="status-label">USB Verbindung:</span>
+        <span id="usb-status" class="status-badge status-disconnected">⚫ Getrennt</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">CAT Status:</span>
+        <span id="cat-status" class="status-badge status-disconnected">⚫ Inaktiv</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Gerät:</span>
+        <span id="device-name" class="status-text">-</span>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="usb">USB-Einstellungen</button>
+      <button class="nav-tab" data-tab="device">Gerätewahl</button>
+      <button class="nav-tab" data-tab="api">API-Server</button>
+      <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
+      <button class="nav-tab" data-tab="info">Informationen</button>
+    </nav>
+
+    <!-- Tab Content -->
+    <div class="content-area">
+      <!-- USB Settings Tab -->
+      <div id="usb-tab" class="tab-content active">
+        <h2>USB/Serial-Einstellungen</h2>
+        <form id="usb-form" class="config-form">
+          <div class="form-group">
+            <label for="usb-port">Port:</label>
+            <input type="text" id="usb-port" name="port" placeholder="z.B. COM4 oder /dev/ttyUSB0" required>
+            <small>Linux: /dev/ttyUSB0, /dev/ttyACM0 | Windows: COM3, COM4, ...</small>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="usb-baud">Baud-Rate:</label>
+              <select id="usb-baud" name="baud_rate" required>
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200" selected>115200</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="usb-databits">Datenbits:</label>
+              <select id="usb-databits" name="data_bits" required>
+                <option value="7">7</option>
+                <option value="8" selected>8</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="usb-stopbits">Stoppbits:</label>
+              <select id="usb-stopbits" name="stop_bits" required>
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="usb-parity">Parität:</label>
+              <select id="usb-parity" name="parity" required>
+                <option value="N" selected>Keine</option>
+                <option value="E">Even</option>
+                <option value="O">Odd</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="usb-timeout">Timeout (ms):</label>
+            <input type="number" id="usb-timeout" name="timeout" min="100" max="5000">
+          </div>
+
+          <div class="form-group">
+            <label for="usb-reconnect">Reconnect-Intervall (s):</label>
+            <input type="number" id="usb-reconnect" name="reconnect_interval" min="1" max="60">
+          </div>
+
+          <button type="submit" class="btn-primary">Speichern</button>
+          <span id="usb-message" class="form-message"></span>
+        </form>
+      </div>
+
+      <!-- Device Selection Tab -->
+      <div id="device-tab" class="tab-content">
+        <h2>Funkgerät auswählen</h2>
+        <p>Wähle das Funk-Gerät aus, das du verwendest. Die YAML-Protokolldatei wird automatisch laden.</p>
+        <form id="device-form" class="config-form">
+          <div class="form-group">
+            <label for="device-select">Verfügbare Geräte:</label>
+            <select id="device-select" name="device" required>
+              <option value="">-- Laden...</option>
+            </select>
+          </div>
+
+          <div id="device-info" class="info-box"></div>
+
+          <button type="submit" class="btn-primary">Speichern</button>
+          <span id="device-message" class="form-message"></span>
+        </form>
+      </div>
+
+      <!-- API Server Tab -->
+      <div id="api-tab" class="tab-content">
+        <h2>API-Server Einstellungen</h2>
+        <form id="api-form" class="config-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="api-host">Host:</label>
+              <input type="text" id="api-host" name="host" value="127.0.0.1" required>
+              <small>Normalerweise 127.0.0.1 (lokal). Docker Container: 0.0.0.0</small>
+            </div>
+
+            <div class="form-group">
+              <label for="api-port">Port:</label>
+              <input type="number" id="api-port" name="port" min="1" max="65535" value="8080" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="api-loglevel">Log-Level:</label>
+            <select id="api-loglevel" name="log_level" required>
+              <option value="DEBUG">DEBUG (sehr detailliert)</option>
+              <option value="INFO" selected>INFO (Standard)</option>
+              <option value="WARNING">WARNING (Warnungen + Fehler)</option>
+              <option value="ERROR">ERROR (nur Fehler)</option>
+            </select>
+          </div>
+
+          <div class="form-group form-checkbox">
+            <label>
+              <input type="checkbox" id="api-https" name="enable_https">
+              HTTPS aktivieren (optional)
+            </label>
+          </div>
+
+          <button type="submit" class="btn-primary">Speichern</button>
+          <span id="api-message" class="form-message"></span>
+        </form>
+      </div>
+
+      <!-- Wavelog Integration Tab -->
+      <div id="wavelog-tab" class="tab-content">
+        <h2>Wavelog-Integration</h2>
+        <p>Konfiguriere die Verbindung zu deinem Wavelog-Server für automatische Logeinträge.</p>
+
+        <form id="wavelog-form" class="config-form">
+          <div class="form-group form-checkbox">
+            <label>
+              <input type="checkbox" id="wavelog-enabled" name="enabled">
+              Wavelog-Integration aktivieren
+            </label>
+          </div>
+
+          <div id="wavelog-config" class="wavelog-config-section" style="display: none;">
+            <div class="form-group">
+              <label for="wavelog-url">Wavelog-API-URL:</label>
+              <input type="url" id="wavelog-url" name="api_url" placeholder="https://wavelog.example.com">
+            </div>
+
+            <div class="form-group">
+              <label for="wavelog-apikey">API-Key (Geheim):</label>
+              <input type="password" id="wavelog-apikey" name="api_key_secret_ref" placeholder="Wird verschlüsselt gespeichert">
+              <small>Der Schlüssel wird nie im Klartext angezeigt oder geloggt</small>
+            </div>
+
+            <div class="form-group">
+              <label for="wavelog-station">Station:</label>
+              <select id="wavelog-station" name="station_id">
+                <option value="">-- Zuerst testen --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="wavelog-polling">Polling-Intervall (s):</label>
+              <input type="number" id="wavelog-polling" name="polling_interval" min="5" max="300" value="30">
+            </div>
+
+            <!-- Verbindungstest -->
+            <div class="test-section">
+              <button type="button" id="wavelog-test-btn" class="btn-secondary">Verbindung testen</button>
+              <div id="wavelog-test-status" class="status-line"></div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary">Speichern</button>
+          <span id="wavelog-message" class="form-message"></span>
+        </form>
+      </div>
+
+      <!-- Info Tab -->
+      <div id="info-tab" class="tab-content">
+        <h2>System-Informationen</h2>
+        <div class="info-box">
+          <p><strong>API Version:</strong> <span id="api-version">-</span></p>
+          <p><strong>Aktuelles Gerät:</strong> <span id="info-device">-</span></p>
+          <p><strong>USB Port:</strong> <span id="info-port">-</span></p>
+          <p><strong>Status:</strong> <span id="info-status">-</span></p>
+        </div>
+
+        <h3>Funkgerät-Status</h3>
+        <p><small>Manuelle Prüfung der Verbindung zum Funkgerät</small></p>
+        <div class="info-box">
+          <p><strong>Frequenz:</strong> <span id="rig-frequency">-</span></p>
+          <p><strong>Modus:</strong> <span id="rig-mode">-</span></p>
+          <button type="button" id="refresh-rig-status" class="btn-secondary">Aktualisieren</button>
+        </div>
+
+        <h3>Verfügbare API-Endpunkte</h3>
+        <ul class="endpoint-list">
+          <li><code>GET /api/status</code> - System-Status</li>
+          <li><code>GET /api/config</code> - Konfiguration abrufen</li>
+          <li><code>PUT /api/config</code> - Konfiguration aktualisieren</li>
+          <li><code>GET /api/rig/frequency</code> - Aktuelle Frequenz</li>
+          <li><code>PUT /api/rig/frequency</code> - Frequenz setzen</li>
+          <li><code>GET /api/rig/mode</code> - Aktuellen Modus auslesen</li>
+          <li><code>GET /api/commands</code> - Verfügbare Befehle</li>
+          <li><code>GET /api/devices</code> - Verfügbare Geräte</li>
+        </ul>
+
+        <h3>Konfigurationsdatei (config.json)</h3>
+        <p><small>Secrets werden als <code>***</code> angezeigt</small></p>
+        <div class="config-viewer">
+          <pre id="config-json"><code>Wird geladen...</code></pre>
+        </div>
+
+        <h3>Dokumentation</h3>
+        <p>
+          <a href="/api/docs" target="_blank">Swagger UI 📖</a> |
+          <a href="/api/redoc" target="_blank">ReDoc 📘</a>
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>&copy; 2026 RigBridge - Amateurfunk-Geräte-Steuerung</p>
+  </footer>
+
+  <!-- Komponenten JavaScript -->
+  <script src="/assets/api-client.js"></script>
+  <script src="/assets/config-manager.js"></script>
+  <script src="/assets/status-widget.js"></script>
+  <script src="/assets/theme-switcher.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

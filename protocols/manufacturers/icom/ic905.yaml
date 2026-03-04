@@ -30,216 +30,158 @@ protocol:
     controller: 0xE0
     radio: 0xA4
 
-  # templates for common request or response patterns
-  templates:
-    status_ok_ng: &status_ok_ng
-      type: "alternatives"
-      description: "Returns either success or error response (mutually exclusive)"
-      alternatives:
-        - name: "success"
-          value: 0xFB
-          description: "Command executed successfully"
-        - name: "error"
-          value: 0xFA
-          description: "Command failed or invalid parameter"
-
-    band_edge_bcd5: &band_edge_bcd5
-      type: "structure"
-      description: "Band edge frequencies using 5-byte BCD format"
-      structure:
-        - name: "edge_number"
-          type: "uint8"
-          offset: 0
-          length: 1
-        - name: "lower_edge"
-          type: "bcd5_freq"
-          offset: 1
-          length: 5
-        - name: "separator"
-          type: "fixed_byte"
-          value: 0x2D
-          offset: 6
-          length: 1
-        - name: "higher_edge"
-          type: "bcd5_freq"
-          offset: 7
-          length: 5
-
-    band_edge_bcd6: &band_edge_bcd6
-      type: "structure"
-      description: "Band edge frequencies using 6-byte BCD format"
-      structure:
-        - name: "edge_number"
-          type: "uint8"
-          offset: 0
-          length: 1
-        - name: "lower_edge"
-          type: "bcd6_freq"
-          offset: 1
-          length: 6
-        - name: "separator"
-          type: "fixed_byte"
-          value: 0x2D
-          offset: 7
-          length: 1
-        - name: "higher_edge"
-          type: "bcd6_freq"
-          offset: 8
-          length: 6
-
   # Command definitions based on IC-905 CI-V Reference Guide
   commands:
-
     # ========================================================================
     # TRANSCEIVE COMMANDS (0x00-0x01)
     # ========================================================================
-    send_frequency_data:
-      cmd: 0x00
-      subcmd: null
-      description: "Send frequency data (transceive)"
-      request:
-        alternatives:
-          - name: "frequency"
-            type: "bcd5_freq"
-            description: "Operating frequency to send"
-          - name: "frequency"
-            type: "bcd6_freq"
-            description: "Operating frequency to send (10 GHz band)"
-      response: *status_ok_ng
+    # send_frequency_data:
+    #   cmd: 0x00
+    #   subcmd: null
+    #   description: "Send frequency data (transceive)"
+    #   request:
+    #     alternatives:
+    #       - name: "frequency"
+    #         type: "bcd5_freq"
+    #         description: "Operating frequency to send"
+    #       - name: "frequency"
+    #         type: "bcd6_freq"
+    #         description: "Operating frequency to send (10 GHz band)"
+    #   response:
+    #       - name: "status"
+    #         type: "status_ok_ng"
+    #         description: "Command execution status"
 
-    send_mode_data:
-      cmd: 0x01
-      subcmd: null
-      description: "Send mode data (transceive)"
-      request:
-        structure:
-          - name: "operating mode"
-            type: "operating_mode"
-            description: "Send the mode data (transceive)"
-      response: *status_ok_ng
+    # send_mode_data:
+    #   cmd: 0x01
+    #   subcmd: null
+    #   description: "Send mode data (transceive)"
+    #   request:
+    #     - name: "operating mode"
+    #       type: "operating_mode"
+    #       description: "Send the mode data (transceive)"
+    #   response:
+    #     - name: "status"
+    #       type: "status_ok_ng"
+    #       description: "Command execution status"
 
     # ========================================================================
     # READ COMMANDS (0x02-0x04)
     # ========================================================================
-    read_band_edge:
-      cmd: 0x02
-      subcmd: null
-      description: "Read the band edge frequencies"
-      request:
-        structure: []
-      response:
-        alternatives:
-          - structure: *band_edge_bcd5
-          - structure: *band_edge_bcd6
+    # read_band_edge:
+    #   cmd: 0x02
+    #   subcmd: null
+    #   description: "Read the band edge frequencies"
+    #   request:
+    #     structure: []
+    #   response:
+    #     alternatives:
+    #       - structure: *band_edge_bcd5
+    #       - structure: *band_edge_bcd6
 
     read_operating_frequency:
       cmd: 0x03
       subcmd: null
       description: "Read operating frequency"
-      request:
-        structure: []
+      request: []
       response:
-        alternatives:
-          - name: "frequency"
-            type: "bcd5_freq"
-            description: "Read the operating frequency in BCD"
-          - name: "frequency"
-            type: "bcd6_freq"
-            description: "Read the operating frequency in BCD (10 GHz band)"
+        - name: "frequency"
+          type: "bcd5_freq"
+          description: "Read the operating frequency in BCD"
+        - name: "frequency"
+          type: "bcd6_freq"
+          description: "Read the operating frequency in BCD (10 GHz band)"
 
     read_operating_mode:
       cmd: 0x04
       subcmd: null
       description: "Read operating mode"
-      request:
-        structure: []
+      request: []
       response:
-        structure:
-          - name: "operating mode"
-            type: "operating_mode"
-            description: "Read the operating mode and filter setting"
+        - name: "operating mode"
+          type: "operating_mode"
+          description: "Read the operating mode and filter setting"
 
     # ========================================================================
     # SET COMMANDS (0x05-0x06)
     # ========================================================================
-    set_operating_frequency:
-      cmd: 0x05
-      subcmd: null
-      description: "Set operating frequency"
-      request:
-        alternatives:
-          - name: "frequency"
-            type: "bcd5_freq"
-            description: "Operating frequency to set"
-          - name: "frequency"
-            type: "bcd6_freq"
-            description: "Operating frequency to set (10 GHz band)"
-      response: *status_ok_ng
+    # set_operating_frequency:
+    #   cmd: 0x05
+    #   subcmd: null
+    #   description: "Set operating frequency"
+    #   request:
+    #     alternatives:
+    #       - name: "frequency"
+    #         type: "bcd5_freq"
+    #         description: "Operating frequency to set"
+    #       - name: "frequency"
+    #         type: "bcd6_freq"
+    #         description: "Operating frequency to set (10 GHz band)"
+    #   response: *status_ok_ng
 
-    set_operating_mode:
-      cmd: 0x06
-      subcmd: null
-      description: "Set operating mode and filter"
-      request:
-        structure:
-          - name: "operating mode"
-            type: "operating_mode"
-            description: "Set the operating mode and filter setting"
-      response: *status_ok_ng
+    # set_operating_mode:
+    #   cmd: 0x06
+    #   subcmd: null
+    #   description: "Set operating mode and filter"
+    #   request:
+    #     - name: "operating mode"
+    #       type: "operating_mode"
+    #       description: "Set the operating mode and filter setting"
+    #   response: *status_ok_ng
 
     # ========================================================================
     # VFO COMMANDS (0x07)
     # ========================================================================
-    select_vfo_mode:
-      cmd: 0x07
-      subcmd: null
-      description: "Select the VFO mode"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_vfo_mode:
+    #   cmd: 0x07
+    #   subcmd: null
+    #   description: "Select the VFO mode"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_vfo_a:
-      cmd: 0x07
-      subcmd: 0x00
-      description: "Select VFO A"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_vfo_a:
+    #   cmd: 0x07
+    #   subcmd: 0x00
+    #   description: "Select VFO A"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_vfo_b:
-      cmd: 0x07
-      subcmd: 0x01
-      description: "Select VFO B"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_vfo_b:
+    #   cmd: 0x07
+    #   subcmd: 0x01
+    #   description: "Select VFO B"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    equalize_vfo:
-      cmd: 0x07
-      subcmd: 0xA0
-      description: "Equalize VFO A and VFO B"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # equalize_vfo:
+    #   cmd: 0x07
+    #   subcmd: 0xA0
+    #   description: "Equalize VFO A and VFO B"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    exchange_vfo:
-      cmd: 0x07
-      subcmd: 0xB0
-      description: "Exchange VFO A and VFO B"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # exchange_vfo:
+    #   cmd: 0x07
+    #   subcmd: 0xB0
+    #   description: "Exchange VFO A and VFO B"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
     # ========================================================================
     # MEMORY COMMANDS (0x08-0x0B)
     # ========================================================================
-    select_memory_mode:
-      cmd: 0x08
-      subcmd: null
-      description: "Select the Memory mode"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_memory_mode:
+    #   cmd: 0x08
+    #   subcmd: null
+    #   description: "Select the Memory mode"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
     # select_memory_channel:
     #   cmd: 0x08
@@ -269,829 +211,833 @@ protocol:
     #         description: "Group low byte (BCD)"
     #   response: *status_ok_ng
 
-    memory_write:
-      cmd: 0x09
-      subcmd: null
-      description: "Write to memory"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # memory_write:
+    #   cmd: 0x09
+    #   subcmd: null
+    #   description: "Write to memory"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    memory_to_vfo:
-      cmd: 0x0A
-      subcmd: null
-      description: "Copy memory to VFO"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # memory_to_vfo:
+    #   cmd: 0x0A
+    #   subcmd: null
+    #   description: "Copy memory to VFO"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    memory_clear:
-      cmd: 0x0B
-      subcmd: null
-      description: "Clear memory"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # memory_clear:
+    #   cmd: 0x0B
+    #   subcmd: null
+    #   description: "Clear memory"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
     # ========================================================================
     # OFFSET COMMANDS (0x0C-0x0D)
     # ========================================================================
-    read_frequency_offset:
-      cmd: 0x0C
-      subcmd: null
-      description: "Read duplex offset frequency"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "offset"
-            type: "bcd3_freq"
-            description: "Duplex offset frequency in BCD"
+    # read_frequency_offset:
+    #   cmd: 0x0C
+    #   subcmd: null
+    #   description: "Read duplex offset frequency"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "offset"
+    #         type: "bcd3_freq"
+    #         description: "Duplex offset frequency in BCD"
 
-    send_frequency_offset:
-      cmd: 0x0D
-      subcmd: null
-      description: "Set duplex offset frequency"
-      request:
-        structure:
-          - name: "offset"
-            type: "bcd3_freq"
-            description: "Duplex offset frequency in BCD"
-      response: *status_ok_ng
+    # send_frequency_offset:
+    #   cmd: 0x0D
+    #   subcmd: null
+    #   description: "Set duplex offset frequency"
+    #   request:
+    #     structure:
+    #       - name: "offset"
+    #         type: "bcd3_freq"
+    #         description: "Duplex offset frequency in BCD"
+    #   response: *status_ok_ng
 
     # ========================================================================
     # SCAN COMMANDS (0x0E)
     # ========================================================================
-    cancel_scan:
-      cmd: 0x0E
-      subcmd: 0x00
-      description: "Cancel scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # cancel_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x00
+    #   description: "Cancel scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_program_memory_scan:
-      cmd: 0x0E
-      subcmd: 0x01
-      description: "Start a programmed/memory scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_program_memory_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x01
+    #   description: "Start a programmed/memory scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_program_scan:
-      cmd: 0x0E
-      subcmd: 0x02
-      description: "Start a programmed scan"
-      request:
-          structure: []
-      response: *status_ok_ng
+    # start_program_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x02
+    #   description: "Start a programmed scan"
+    #   request:
+    #       structure: []
+    #   response: *status_ok_ng
 
-    start_df_scan:
-      cmd: 0x0E
-      subcmd: 0x03
-      description: "Start a ΔF scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_df_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x03
+    #   description: "Start a ΔF scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_program_scan_fine:
-      cmd: 0x0E
-      subcmd: 0x12
-      description: "Start a Fine programmed scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_program_scan_fine:
+    #   cmd: 0x0E
+    #   subcmd: 0x12
+    #   description: "Start a Fine programmed scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_df_scan_fine:
-      cmd: 0x0E
-      subcmd: 0x13
-      description: "Start a Fine ΔF scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_df_scan_fine:
+    #   cmd: 0x0E
+    #   subcmd: 0x13
+    #   description: "Start a Fine ΔF scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_memory_scan:
-      cmd: 0x0E
-      subcmd: 0x22
-      description: "Start a memory scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_memory_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x22
+    #   description: "Start a memory scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_select_memory_scan:
-      cmd: 0x0E
-      subcmd: 0x23
-      description: "Start a select memory scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_select_memory_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x23
+    #   description: "Start a select memory scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    start_mode_select_scan:
-      cmd: 0x0E
-      subcmd: 0x24
-      description: "Start a Mode Select scan"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # start_mode_select_scan:
+    #   cmd: 0x0E
+    #   subcmd: 0x24
+    #   description: "Start a Mode Select scan"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_5khz:
-      cmd: 0x0E
-      subcmd: 0xA1
-      description: "Select ΔF scan span (±5kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_5khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA1
+    #   description: "Select ΔF scan span (±5kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_10khz:
-      cmd: 0x0E
-      subcmd: 0xA2
-      description: "Select ΔF scan span (±10kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_10khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA2
+    #   description: "Select ΔF scan span (±10kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_20khz:
-      cmd: 0x0E
-      subcmd: 0xA3
-      description: "Select ΔF scan span (±20kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_20khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA3
+    #   description: "Select ΔF scan span (±20kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_50khz:
-      cmd: 0x0E
-      subcmd: 0xA4
-      description: "Select ΔF scan span (±50kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_50khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA4
+    #   description: "Select ΔF scan span (±50kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_100khz:
-      cmd: 0x0E
-      subcmd: 0xA5
-      description: "Select ΔF scan span (±100kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_100khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA5
+    #   description: "Select ΔF scan span (±100kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_500khz:
-      cmd: 0x0E
-      subcmd: 0xA6
-      description: "Select ΔF scan span (±500kHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_500khz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA6
+    #   description: "Select ΔF scan span (±500kHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    select_df_scan_span_1mhz:
-      cmd: 0x0E
-      subcmd: 0xA7
-      description: "Select ΔF scan span (±1MHz)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # select_df_scan_span_1mhz:
+    #   cmd: 0x0E
+    #   subcmd: 0xA7
+    #   description: "Select ΔF scan span (±1MHz)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    clear_select_channel_setting:
-      cmd: 0x0E
-      subcmd: 0xB0
-      description: "Clear the Select channel setting"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # clear_select_channel_setting:
+    #   cmd: 0x0E
+    #   subcmd: 0xB0
+    #   description: "Clear the Select channel setting"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_as_select_channel:
-      cmd: 0x0E
-      subcmd: 0xB1
-      description: "Set as select channel"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_as_select_channel:
+    #   cmd: 0x0E
+    #   subcmd: 0xB1
+    #   description: "Set as select channel"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_select_channel:
-      cmd: 0x0E
-      subcmd: 0xB1
-      description: "Set the channel as select channel (1-3)"
-      request:
-        structure:
-          - name: "channel"
-            type: "uint8"
-            description: "Channel selection (1-3)"
-            enum:
-              0x01: "Select channel 1"
-              0x02: "Select channel 2"
-              0x03: "Select channel 3"
-      response: *status_ok_ng
+    # set_select_channel:
+    #   cmd: 0x0E
+    #   subcmd: 0xB1
+    #   description: "Set the channel as select channel (1-3)"
+    #   request:
+    #     structure:
+    #       - name: "channel"
+    #         type: "uint8"
+    #         description: "Channel selection (1-3)"
+    #         enum:
+    #           0x01: "Select channel 1"
+    #           0x02: "Select channel 2"
+    #           0x03: "Select channel 3"
+    #   response: *status_ok_ng
 
-    set_select_memory_scan_channel:
-      cmd: 0x0E
-      subcmd: 0xB2
-      description: "Set the Select memory scan channel all"
-      request:
-        structure:
-          - name: "channel"
-            type: "uint8"
-            description: "Channel selection"
-            enum:
-              0x00: "All channels"
-              0x01: "Select channel 1"
-              0x02: "Select channel 2"
-              0x03: "Select channel 3"
-      response: *status_ok_ng
+    # set_select_memory_scan_channel:
+    #   cmd: 0x0E
+    #   subcmd: 0xB2
+    #   description: "Set the Select memory scan channel all"
+    #   request:
+    #     structure:
+    #       - name: "channel"
+    #         type: "uint8"
+    #         description: "Channel selection"
+    #         enum:
+    #           0x00: "All channels"
+    #           0x01: "Select channel 1"
+    #           0x02: "Select channel 2"
+    #           0x03: "Select channel 3"
+    #   response: *status_ok_ng
 
-    set_scan_resume_off:
-      cmd: 0x0E
-      subcmd: 0xD0
-      description: "Set Scan resume OFF"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_scan_resume_off:
+    #   cmd: 0x0E
+    #   subcmd: 0xD0
+    #   description: "Set Scan resume OFF"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_scan_resume_on:
-      cmd: 0x0E
-      subcmd: 0xD3
-      description: "Set Scan resume ON (Close&Delay)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_scan_resume_on:
+    #   cmd: 0x0E
+    #   subcmd: 0xD3
+    #   description: "Set Scan resume ON (Close&Delay)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
     # ========================================================================
     # SPLIT/DUPLEX COMMANDS (0x0F)
     # ========================================================================
 
-    read_split_duplex_status:
-      cmd: 0x0F
-      subcmd: null
-      description: "Set split OFF"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "channel"
-            type: "uint8"
-            description: "Channel selection (1-3)"
-            enum:
-              0x00: "Read Split OFF setting"
-              0x01: "Read Split ON setting"
-              0x11: "Read DUP- operation"
-              0x12: "Read DUP+ operation"
-              0x13: "Read DD Repeater Simplex mode (RPS)"
+    # read_split_duplex_status:
+    #   cmd: 0x0F
+    #   subcmd: null
+    #   description: "Set split OFF"
+    #   request:
+    #     structure: []
+    #   response:
+    #     size: 1
+    #     bytes:
+    #       - index: 0
+    #         length: 1
+    #         name: "channel"
+    #         encoding:
+    #           method: "enum"
+    #         description: "Channel selection (1-3)"
+    #         enum:
+    #           0x00: "Read Split OFF setting"
+    #           0x01: "Read Split ON setting"
+    #           0x11: "Read DUP- operation"
+    #           0x12: "Read DUP+ operation"
+    #           0x13: "Read DD Repeater Simplex mode (RPS)"
 
-    set_split_off:
-      cmd: 0x0F
-      subcmd: 0x00
-      description: "Set split OFF"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_split_off:
+    #   cmd: 0x0F
+    #   subcmd: 0x00
+    #   description: "Set split OFF"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_split_on:
-      cmd: 0x0F
-      subcmd: 0x01
-      description: "Set split ON"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_split_on:
+    #   cmd: 0x0F
+    #   subcmd: 0x01
+    #   description: "Set split ON"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_simplex:
-      cmd: 0x0F
-      subcmd: 0x10
-      description: "Set simplex operation"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_simplex:
+    #   cmd: 0x0F
+    #   subcmd: 0x10
+    #   description: "Set simplex operation"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_duplex_minus:
-      cmd: 0x0F
-      subcmd: 0x11
-      description: "Set DUP- operation"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_duplex_minus:
+    #   cmd: 0x0F
+    #   subcmd: 0x11
+    #   description: "Set DUP- operation"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_duplex_plus:
-      cmd: 0x0F
-      subcmd: 0x12
-      description: "Set DUP+ operation"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_duplex_plus:
+    #   cmd: 0x0F
+    #   subcmd: 0x12
+    #   description: "Set DUP+ operation"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
-    set_dd_repeater_simplex:
-      cmd: 0x0F
-      subcmd: 0x13
-      description: "Set DD Repeater Simplex mode (RPS)"
-      request:
-        structure: []
-      response: *status_ok_ng
+    # set_dd_repeater_simplex:
+    #   cmd: 0x0F
+    #   subcmd: 0x13
+    #   description: "Set DD Repeater Simplex mode (RPS)"
+    #   request:
+    #     structure: []
+    #   response: *status_ok_ng
 
     # ========================================================================
     # TUNING STEP (0x10)
     # ========================================================================
-    tuning_step_enum: &tuning_step_enum
-      0x00: "OFF(10Hz/1Hz)"
-      0x01: "100Hz"
-      0x02: "500Hz"
-      0x03: "1kHz"
-      0x04: "5kHz"
-      0x05: "6.25kHz"
-      0x06: "10kHz"
-      0x07: "12.5kHz"
-      0x08: "20kHz"
-      0x09: "25kHz"
-      0x0A: "50kHz"
-      0x0B: "100kHz"
-      0x0C: "500kHz"
+    # tuning_step_enum: &tuning_step_enum
+    #   0x00: "OFF(10Hz/1Hz)"
+    #   0x01: "100Hz"
+    #   0x02: "500Hz"
+    #   0x03: "1kHz"
+    #   0x04: "5kHz"
+    #   0x05: "6.25kHz"
+    #   0x06: "10kHz"
+    #   0x07: "12.5kHz"
+    #   0x08: "20kHz"
+    #   0x09: "25kHz"
+    #   0x0A: "50kHz"
+    #   0x0B: "100kHz"
+    #   0x0C: "500kHz"
 
-    read_tuning_step:
-      cmd: 0x10
-      subcmd: null
-      description: "Read tuning step"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "step"
-            type: "uint8"
-            description: "Channel selection (1-3)"
-            enum: *tuning_step_enum
+    # read_tuning_step:
+    #   cmd: 0x10
+    #   subcmd: null
+    #   description: "Read tuning step"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "step"
+    #         type: "uint8"
+    #         description: "Channel selection (1-3)"
+    #         enum: *tuning_step_enum
 
-    set_tuning_step:
-      cmd: 0x10
-      subcmd: null
-      description: "Send tuning step"
-      request:
-        structure:
-          - name: "step"
-            type: "uint8"
-            enum: *tuning_step_enum
-      response: *status_ok_ng
+    # set_tuning_step:
+    #   cmd: 0x10
+    #   subcmd: null
+    #   description: "Send tuning step"
+    #   request:
+    #     structure:
+    #       - name: "step"
+    #         type: "uint8"
+    #         enum: *tuning_step_enum
+    #   response: *status_ok_ng
 
     # ========================================================================
     # ATTENUATOR (0x11)
     # ========================================================================
-    attenuator_enum: &attenuator_enum
-      0x00: "attenuator OFF"
-      0x10: "10dB attenuator setting"
+    # attenuator_enum: &attenuator_enum
+    #   0x00: "attenuator OFF"
+    #   0x10: "10dB attenuator setting"
 
-    read_attenuator:
-      cmd: 0x11
-      subcmd: null
-      description: "Attenuator OFF"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "step"
-            type: "uint8"
-            description: "Channel selection (1-3)"
-            enum: *attenuator_enum
+    # read_attenuator:
+    #   cmd: 0x11
+    #   subcmd: null
+    #   description: "Attenuator OFF"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "step"
+    #         type: "uint8"
+    #         description: "Channel selection (1-3)"
+    #         enum: *attenuator_enum
 
-    send_attenuator_off:
-      cmd: 0x11
-      subcmd: null
-      description: "Attenuator OFF"
-      request:
-        structure:
-          - name: "step"
-            type: "uint8"
-            enum: *attenuator_enum
-      response: *status_ok_ng
+    # send_attenuator_off:
+    #   cmd: 0x11
+    #   subcmd: null
+    #   description: "Attenuator OFF"
+    #   request:
+    #     structure:
+    #       - name: "step"
+    #         type: "uint8"
+    #         enum: *attenuator_enum
+    #   response: *status_ok_ng
 
     # ========================================================================
     # VOICE SYNTHESIZER (0x13)
     # ========================================================================
-    request_speech_all:
-      cmd: 0x13
-      subcmd: 0x00
-      description: "Speech all data (S-meter, frequency, mode)"
+    # request_speech_all:
+    #   cmd: 0x13
+    #   subcmd: 0x00
+    #   description: "Speech all data (S-meter, frequency, mode)"
 
-    request_speech_freq_smeter:
-      cmd: 0x13
-      subcmd: 0x01
-      description: "Speech frequency and S-meter"
+    # request_speech_freq_smeter:
+    #   cmd: 0x13
+    #   subcmd: 0x01
+    #   description: "Speech frequency and S-meter"
 
-    request_speech_mode:
-      cmd: 0x13
-      subcmd: 0x02
-      description: "Speech mode"
+    # request_speech_mode:
+    #   cmd: 0x13
+    #   subcmd: 0x02
+    #   description: "Speech mode"
 
     # ========================================================================
     # LEVEL SETTINGS (0x14)
     # ========================================================================
-    read_af_level:
-      cmd: 0x14
-      subcmd: 0x01
-      description: "Read AF level"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "AF_level"
-            type: "uint8_percent"
+    # read_af_level:
+    #   cmd: 0x14
+    #   subcmd: 0x01
+    #   description: "Read AF level"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "AF_level"
+    #         type: "uint8_percent"
 
-    set_af_level:
-      cmd: 0x14
-      subcmd: 0x01
-      description: "Set AF level"
-      request:
-        structure:
-          - name: "AF_level"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_af_level:
+    #   cmd: 0x14
+    #   subcmd: 0x01
+    #   description: "Set AF level"
+    #   request:
+    #     structure:
+    #       - name: "AF_level"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_rf_gain:
-      cmd: 0x14
-      subcmd: 0x02
-      description: "Read RF gain"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "RF_gain"
-            type: "uint8_percent"
+    # read_rf_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x02
+    #   description: "Read RF gain"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "RF_gain"
+    #         type: "uint8_percent"
 
-    set_rf_gain:
-      cmd: 0x14
-      subcmd: 0x02
-      description: "Set RF gain"
-      request:
-        structure:
-          - name: "RF_gain"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_rf_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x02
+    #   description: "Set RF gain"
+    #   request:
+    #     structure:
+    #       - name: "RF_gain"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_squelch:
-      cmd: 0x14
-      subcmd: 0x03
-      description: "Read squelch"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "squelch_level"
-            type: "uint8_percent"
+    # read_squelch:
+    #   cmd: 0x14
+    #   subcmd: 0x03
+    #   description: "Read squelch"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "squelch_level"
+    #         type: "uint8_percent"
 
-    set_squelch:
-      cmd: 0x14
-      subcmd: 0x03
-      description: "Set squelch"
-      request:
-        structure:
-          - name: "squelch_level"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_squelch:
+    #   cmd: 0x14
+    #   subcmd: 0x03
+    #   description: "Set squelch"
+    #   request:
+    #     structure:
+    #       - name: "squelch_level"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_nr_level:
-      cmd: 0x14
-      subcmd: 0x06
-      description: "Read NR level"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "nr_level"
-            type: "uint8_percent"
+    # read_nr_level:
+    #   cmd: 0x14
+    #   subcmd: 0x06
+    #   description: "Read NR level"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "nr_level"
+    #         type: "uint8_percent"
 
-    set_nr_level:
-      cmd: 0x14
-      subcmd: 0x06
-      description: "Set NR level"
-      request:
-        structure:
-          - name: "nr_level"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_nr_level:
+    #   cmd: 0x14
+    #   subcmd: 0x06
+    #   description: "Set NR level"
+    #   request:
+    #     structure:
+    #       - name: "nr_level"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_pbt1:
-      cmd: 0x14
-      subcmd: 0x07
-      description: "Read PBT1 position"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "pbt1_position"
-            type: "uint8_percent_pos_neg"
+    # read_pbt1:
+    #   cmd: 0x14
+    #   subcmd: 0x07
+    #   description: "Read PBT1 position"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "pbt1_position"
+    #         type: "uint8_percent_pos_neg"
 
-    set_pbt1:
-      cmd: 0x14
-      subcmd: 0x07
-      description: "Set PBT1 position"
-      request:
-        structure:
-          - name: "pbt1_position"
-            type: "uint8_percent_pos_neg"
-      response: *status_ok_ng
+    # set_pbt1:
+    #   cmd: 0x14
+    #   subcmd: 0x07
+    #   description: "Set PBT1 position"
+    #   request:
+    #     structure:
+    #       - name: "pbt1_position"
+    #         type: "uint8_percent_pos_neg"
+    #   response: *status_ok_ng
 
-    read_pbt2:
-      cmd: 0x14
-      subcmd: 0x08
-      description: "Read PBT2 position"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "pbt2_position"
-            type: "uint8_percent_pos_neg"
+    # read_pbt2:
+    #   cmd: 0x14
+    #   subcmd: 0x08
+    #   description: "Read PBT2 position"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "pbt2_position"
+    #         type: "uint8_percent_pos_neg"
 
-    set_pbt2:
-      cmd: 0x14
-      subcmd: 0x08
-      description: "Set PBT2 position"
-      request:
-        structure:
-          - name: "pbt2_position"
-            type: "uint8_percent_pos_neg"
-      response: *status_ok_ng
+    # set_pbt2:
+    #   cmd: 0x14
+    #   subcmd: 0x08
+    #   description: "Set PBT2 position"
+    #   request:
+    #     structure:
+    #       - name: "pbt2_position"
+    #         type: "uint8_percent_pos_neg"
+    #   response: *status_ok_ng
 
-    read_cw_pitch:
-      cmd: 0x14
-      subcmd: 0x09
-      description: "Read CW pitch (5 Hz steps)"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "cw_pitch"
-            type: "uint8_cw_pitch"
+    # read_cw_pitch:
+    #   cmd: 0x14
+    #   subcmd: 0x09
+    #   description: "Read CW pitch (5 Hz steps)"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "cw_pitch"
+    #         type: "uint8_cw_pitch"
 
-    set_cw_pitch:
-      cmd: 0x14
-      subcmd: 0x09
-      description: "Set CW pitch (5 Hz steps)"
-      request:
-        structure:
-          - name: "cw_pitch"
-            type: "uint8_cw_pitch"
-      response: *status_ok_ng
+    # set_cw_pitch:
+    #   cmd: 0x14
+    #   subcmd: 0x09
+    #   description: "Set CW pitch (5 Hz steps)"
+    #   request:
+    #     structure:
+    #       - name: "cw_pitch"
+    #         type: "uint8_cw_pitch"
+    #   response: *status_ok_ng
 
-    read_rf_power:
-      cmd: 0x14
-      subcmd: 0x0A
-      description: "Read RF power"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "level_high"
-            type: "uint8_percent"
+    # read_rf_power:
+    #   cmd: 0x14
+    #   subcmd: 0x0A
+    #   description: "Read RF power"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "level_high"
+    #         type: "uint8_percent"
 
-    set_rf_power:
-      cmd: 0x14
-      subcmd: 0x0A
-      description: "Set RF power"
-      request:
-        structure:
-          - name: "level_high"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_rf_power:
+    #   cmd: 0x14
+    #   subcmd: 0x0A
+    #   description: "Set RF power"
+    #   request:
+    #     structure:
+    #       - name: "level_high"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_mic_gain:
-      cmd: 0x14
-      subcmd: 0x0B
-      description: "Read MIC gain"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "mic_gain"
-            type: "uint8_percent"
+    # read_mic_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x0B
+    #   description: "Read MIC gain"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "mic_gain"
+    #         type: "uint8_percent"
 
-    set_mic_gain:
-      cmd: 0x14
-      subcmd: 0x0B
-      description: "Set MIC gain"
-      request:
-        structure:
-          - name: "mic_gain"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_mic_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x0B
+    #   description: "Set MIC gain"
+    #   request:
+    #     structure:
+    #       - name: "mic_gain"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_keying_speed:
-      cmd: 0x14
-      subcmd: 0x0C
-      description: "Read keying speed"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "keying_speed"
-            type: "uint8_keyer_speed"
+    # read_keying_speed:
+    #   cmd: 0x14
+    #   subcmd: 0x0C
+    #   description: "Read keying speed"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "keying_speed"
+    #         type: "uint8_keyer_speed"
 
-    set_keying_speed:
-      cmd: 0x14
-      subcmd: 0x0C
-      description: "Set keying speed"
-      request:
-        structure:
-          - name: "keying_speed"
-            type: "uint8_keyer_speed"
-      response: *status_ok_ng
+    # set_keying_speed:
+    #   cmd: 0x14
+    #   subcmd: 0x0C
+    #   description: "Set keying speed"
+    #   request:
+    #     structure:
+    #       - name: "keying_speed"
+    #         type: "uint8_keyer_speed"
+    #   response: *status_ok_ng
 
-    read_notch_position:
-      cmd: 0x14
-      subcmd: 0x0D
-      description: "Read notch filter position"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "notch_position"
-            type: "uint8_percent_pos_neg"
+    # read_notch_position:
+    #   cmd: 0x14
+    #   subcmd: 0x0D
+    #   description: "Read notch filter position"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "notch_position"
+    #         type: "uint8_percent_pos_neg"
 
-    set_notch_position:
-      cmd: 0x14
-      subcmd: 0x0D
-      description: "Set notch filter position"
-      request:
-        structure:
-          - name: "notch_position"
-            type: "uint8_percent_pos_neg"
-      response: *status_ok_ng
+    # set_notch_position:
+    #   cmd: 0x14
+    #   subcmd: 0x0D
+    #   description: "Set notch filter position"
+    #   request:
+    #     structure:
+    #       - name: "notch_position"
+    #         type: "uint8_percent_pos_neg"
+    #   response: *status_ok_ng
 
-    read_comp_level:
-      cmd: 0x14
-      subcmd: 0x0E
-      description: "Read COMP level"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "comp_level"
-            type: "uint8_scaled_0_10"
+    # read_comp_level:
+    #   cmd: 0x14
+    #   subcmd: 0x0E
+    #   description: "Read COMP level"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "comp_level"
+    #         type: "uint8_scaled_0_10"
 
-    set_comp_level:
-      cmd: 0x14
-      subcmd: 0x0E
-      description: "Set COMP level"
-      request:
-        structure:
-          - name: "comp_level"
-            type: "uint8_scaled_0_10"
-      response: *status_ok_ng
+    # set_comp_level:
+    #   cmd: 0x14
+    #   subcmd: 0x0E
+    #   description: "Set COMP level"
+    #   request:
+    #     structure:
+    #       - name: "comp_level"
+    #         type: "uint8_scaled_0_10"
+    #   response: *status_ok_ng
 
-    read_breakin_delay:
-      cmd: 0x14
-      subcmd: 0x0F
-      description: "Read break-in delay"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "breakin_delay"
-            type: "uint8_breakin_delay"
+    # read_breakin_delay:
+    #   cmd: 0x14
+    #   subcmd: 0x0F
+    #   description: "Read break-in delay"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "breakin_delay"
+    #         type: "uint8_breakin_delay"
 
-    set_breakin_delay:
-      cmd: 0x14
-      subcmd: 0x0F
-      description: "Set break-in delay"
-      request:
-        structure:
-          - name: "breakin_delay"
-            type: "uint8_breakin_delay"
-      response: *status_ok_ng
+    # set_breakin_delay:
+    #   cmd: 0x14
+    #   subcmd: 0x0F
+    #   description: "Set break-in delay"
+    #   request:
+    #     structure:
+    #       - name: "breakin_delay"
+    #         type: "uint8_breakin_delay"
+    #   response: *status_ok_ng
 
-    read_nb_level:
-      cmd: 0x14
-      subcmd: 0x12
-      description: "Read NB level"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "nb_level"
-            type: "uint8_percent"
+    # read_nb_level:
+    #   cmd: 0x14
+    #   subcmd: 0x12
+    #   description: "Read NB level"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "nb_level"
+    #         type: "uint8_percent"
 
-    set_nb_level:
-      cmd: 0x14
-      subcmd: 0x12
-      description: "Set NB level"
-      request:
-        structure:
-          - name: "nb_level"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_nb_level:
+    #   cmd: 0x14
+    #   subcmd: 0x12
+    #   description: "Set NB level"
+    #   request:
+    #     structure:
+    #       - name: "nb_level"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_monitor_audio:
-      cmd: 0x14
-      subcmd: 0x15
-      description: "Read monitor audio level"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "monitor_audio_level"
-            type: "uint8_percent"
+    # read_monitor_audio:
+    #   cmd: 0x14
+    #   subcmd: 0x15
+    #   description: "Read monitor audio level"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "monitor_audio_level"
+    #         type: "uint8_percent"
 
-    set_monitor_audio:
-      cmd: 0x14
-      subcmd: 0x15
-      description: "Set monitor audio level"
-      request:
-        structure:
-          - name: "monitor_audio_level"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_monitor_audio:
+    #   cmd: 0x14
+    #   subcmd: 0x15
+    #   description: "Set monitor audio level"
+    #   request:
+    #     structure:
+    #       - name: "monitor_audio_level"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_vox_gain:
-      cmd: 0x14
-      subcmd: 0x16
-      description: "Read VOX gain"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "vox_gain"
-            type: "uint8_percent"
+    # read_vox_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x16
+    #   description: "Read VOX gain"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "vox_gain"
+    #         type: "uint8_percent"
 
-    set_vox_gain:
-      cmd: 0x14
-      subcmd: 0x16
-      description: "Set VOX gain"
-      request:
-        structure:
-          - name: "vox_gain"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_vox_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x16
+    #   description: "Set VOX gain"
+    #   request:
+    #     structure:
+    #       - name: "vox_gain"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_anti_vox_gain:
-      cmd: 0x14
-      subcmd: 0x17
-      description: "Read Anti VOX gain"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "anti_vox_gain"
-            type: "uint8_percent"
+    # read_anti_vox_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x17
+    #   description: "Read Anti VOX gain"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "anti_vox_gain"
+    #         type: "uint8_percent"
 
-    set_anti_vox_gain:
-      cmd: 0x14
-      subcmd: 0x17
-      description: "Set Anti VOX gain"
-      request:
-        structure:
-          - name: "anti_vox_gain"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_anti_vox_gain:
+    #   cmd: 0x14
+    #   subcmd: 0x17
+    #   description: "Set Anti VOX gain"
+    #   request:
+    #     structure:
+    #       - name: "anti_vox_gain"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    read_lcd_brightness:
-      cmd: 0x14
-      subcmd: 0x19
-      description: "Read LCD brightness"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "lcd_brightness"
-            type: "uint8_percent"
+    # read_lcd_brightness:
+    #   cmd: 0x14
+    #   subcmd: 0x19
+    #   description: "Read LCD brightness"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "lcd_brightness"
+    #         type: "uint8_percent"
 
-    set_lcd_brightness:
-      cmd: 0x14
-      subcmd: 0x19
-      description: "Set LCD brightness"
-      request:
-        structure:
-          - name: "lcd_brightness"
-            type: "uint8_percent"
-      response: *status_ok_ng
+    # set_lcd_brightness:
+    #   cmd: 0x14
+    #   subcmd: 0x19
+    #   description: "Set LCD brightness"
+    #   request:
+    #     structure:
+    #       - name: "lcd_brightness"
+    #         type: "uint8_percent"
+    #   response: *status_ok_ng
 
-    # ========================================================================
-    # METER READINGS (0x15)
-    # ========================================================================
-    read_squelch_status:
-      cmd: 0x15
-      subcmd: 0x01
-      description: "Read squelch status"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "squelch_status"
-            type: "boolean"
-            description: "Squelch status (0x00=Close, 0x01=Open)"
+    # # ========================================================================
+    # # METER READINGS (0x15)
+    # # ========================================================================
+    # read_squelch_status:
+    #   cmd: 0x15
+    #   subcmd: 0x01
+    #   description: "Read squelch status"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "squelch_status"
+    #         type: "boolean"
+    #         description: "Squelch status (0x00=Close, 0x01=Open)"
 
-    read_s_meter:
-      cmd: 0x15
-      subcmd: 0x02
-      description: "Read S-meter (0x00=0, 0x78=54dB, 0xF1=114dB)"
-      request:
-        structure: []
-      response:
-        structure:
-          - name: "level_high"
-            type: "uint8_s_meter"
-            description: "S-meter level (S0 to S9+60dB) encoded as 0x00-0xFF"
-            scaling:
-              method: "linear_interpolation"
-              unit: "dB"
-              points:
-                0x00: 0
-                0x78: 54
-                0xF1: 114
-              range:
-                min: 0
-                max: 241
-              description: "Linear interpolation between calibration points for S-meter reading"
+    # read_s_meter:
+    #   cmd: 0x15
+    #   subcmd: 0x02
+    #   description: "Read S-meter (0x00=0, 0x78=54dB, 0xF1=114dB)"
+    #   request:
+    #     structure: []
+    #   response:
+    #     structure:
+    #       - name: "level_high"
+    #         type: "uint8_s_meter"
+    #         description: "S-meter level (S0 to S9+60dB) encoded as 0x00-0xFF"
+    #         scaling:
+    #           method: "linear_interpolation"
+    #           unit: "dB"
+    #           points:
+    #             0x00: 0
+    #             0x78: 54
+    #             0xF1: 114
+    #           range:
+    #             min: 0
+    #             max: 241
+    #           description: "Linear interpolation between calibration points for S-meter reading"
 
     # read_varios_squelch_status:
     #   cmd: 0x15
@@ -1825,19 +1771,15 @@ protocol:
     # ========================================================================
     # TRANSCEIVER ID (0x19)
     # ========================================================================
-    # read_transceiver_id:
-    #   cmd: 0x19
-    #   subcmd: 0x00
-    #   description: "Read transceiver ID (returns 0xAC for IC-905)"
-    #   request:
-    #     structure: []
-    #   response:
-    #     structure:
-    #       - name: "id"
-    #         type: "uint8"
-    #         offset: 0
-    #         length: 1
-    #         description: "Transceiver ID: 0xAC for IC-905"
+    read_transceiver_id:
+      cmd: 0x19
+      subcmd: 0x00
+      description: "Read transceiver ID (returns 0xAC for IC-905)"
+      request: []
+      response:
+        - name: "id"
+          type: "uint8"
+          description: "Transceiver ID: 0xAC for IC-905"
 
     # ========================================================================
     # EXTENDED SETTINGS (0x1A) - Core Operations

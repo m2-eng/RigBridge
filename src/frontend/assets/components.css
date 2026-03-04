@@ -1,0 +1,397 @@
+/**
+ * Component Styles für RigBridge UI
+ *
+ * Defineert:
+ * - Buttons
+ * - Formulare und Inputs
+ * - Cards und Infoboxen
+ * - Verschiedene UI-Komponenten
+ */
+
+/* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+button {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-icon {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: none;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-time) var(--transition-easing);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  box-shadow: 0 2px 4px var(--shadow-medium);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+  box-shadow: 0 4px 8px var(--shadow-dark);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-danger {
+  background-color: var(--color-danger);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #a71d2a;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-xl);
+  cursor: pointer;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.btn-icon:hover {
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   FORMS
+   ============================================================================ */
+
+.config-form {
+  max-width: 600px;
+}
+
+.form-group {
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.form-row .form-group {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="url"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  transition: all var(--transition-time) var(--transition-easing);
+}
+
+input::-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-primary) inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="url"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+  background-color: var(--bg-primary);
+}
+
+input[type="text"]:invalid,
+input[type="email"]:invalid,
+input[type="url"]:invalid,
+input[type="number"]:invalid {
+  border-color: var(--color-danger);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.form-checkbox {
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.form-checkbox label {
+  margin: 0;
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+}
+
+.form-message {
+  display: block;
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-small);
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius);
+  animation: slideIn var(--transition-time) var(--transition-easing);
+}
+
+.form-message.success {
+  background-color: rgba(40, 167, 69, 0.1);
+  color: var(--color-success);
+  border-left: 3px solid var(--color-success);
+  padding-left: var(--spacing-md);
+}
+
+.form-message.error {
+  background-color: rgba(220, 53, 69, 0.1);
+  color: var(--color-danger);
+  border-left: 3px solid var(--color-danger);
+  padding-left: var(--spacing-md);
+}
+
+.form-message.info {
+  background-color: rgba(23, 162, 184, 0.1);
+  color: var(--color-info);
+  border-left: 3px solid var(--color-info);
+  padding-left: var(--spacing-md);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============================================================================
+   INFO BOXES
+   ============================================================================ */
+
+.info-box {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.info-box p {
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.info-box p:last-child {
+  margin-bottom: 0;
+}
+
+.info-box strong {
+  color: var(--text-primary);
+}
+
+.info-box span.error {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.info-box button {
+  margin-top: var(--spacing-md);
+}
+
+.status-line {
+  min-height: 24px;
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-small);
+  margin-top: var(--spacing-sm);
+}
+
+.status-line.success {
+  background-color: rgba(40, 167, 69, 0.1);
+  color: var(--color-success);
+  border-left: 3px solid var(--color-success);
+  padding-left: var(--spacing-md);
+}
+
+.status-line.error {
+  background-color: rgba(220, 53, 69, 0.1);
+  color: var(--color-danger);
+  border-left: 3px solid var(--color-danger);
+  padding-left: var(--spacing-md);
+}
+
+.status-line.info {
+  background-color: rgba(23, 162, 184, 0.1);
+  color: var(--color-info);
+  border-left: 3px solid var(--color-info);
+  padding-left: var(--spacing-md);
+}
+
+/* ============================================================================
+   SPECIAL SECTIONS
+   ============================================================================ */
+
+.test-section {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+}
+
+.test-section button {
+  margin-bottom: var(--spacing-md);
+}
+
+.wavelog-config-section {
+  background-color: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+}
+
+.endpoint-list {
+  list-style: none;
+  margin: var(--spacing-md) 0;
+  padding: 0;
+}
+
+.endpoint-list li {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 3px solid var(--color-primary);
+  margin-bottom: var(--spacing-sm);
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-small);
+  color: var(--text-primary);
+}
+
+.endpoint-list code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* ============================================================================
+   CONFIG VIEWER
+   ============================================================================ */
+
+.config-viewer {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: var(--spacing-md);
+  margin: var(--spacing-md) 0;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.config-viewer pre {
+  margin: 0;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.config-viewer code {
+  color: var(--color-text);
+  background: transparent;
+  padding: 0;
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .status-bar {
+    flex-direction: column;
+  }
+
+  .info-box {
+    padding: var(--spacing-md);
+  }
+}

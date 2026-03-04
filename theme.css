@@ -1,0 +1,19 @@
+/**
+ * RigBridge Theme Customization
+ *
+ * Diese Datei erlaubt es, CSS-Variables zu überschreiben und das Erscheinungsbild
+ * des RigBridge UI anzupassen. Sie ist optional und kann von Benutzern nach Bedarf
+ * angepasst werden.
+ *
+ * Beispiele für Anpassungen:
+ *
+ *   :root {
+ *     --color-primary: #ff6b6b;      // Benutzerdefinierte Primärfarbe
+ *     --color-success: #51cf66;       // Benutzerdefinierte Erfolgsfarbe
+ *     --font-size-base: 16px;         // Schriftgröße anpassen
+ *   }
+ *
+ * Alle verfügbaren CSS-Variables finden Sie in base-styles.css
+ */
+
+/* Platz für benutzerdefinierte CSS-Variables */

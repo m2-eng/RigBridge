@@ -1,0 +1,16 @@
+/**
+ * User Theme Customization
+ *
+ * Diese Datei kann von Benutzern angepasst werden, um das RigBridge UI zu theming.
+ * Sie wird als Read-Only Volume im Docker Container gemountet.
+ *
+ * Beispiel: Überschreibe die Primärfarbe
+ * :root {
+ *   --color-primary: #ff6b6b;
+ *   --color-primary-dark: #c92a2a;
+ * }
+ *
+ * Verfügbare CSS-Variablen siehe base-styles.css
+ */
+
+/* Platz für Custom CSS-Variablen */

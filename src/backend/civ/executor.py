@@ -56,14 +56,16 @@ class CommandResult:
 class ProtocolParser:
     """Parser für YAML-Protokolldefinitionen."""
 
-    def __init__(self, protocol_file: Path) -> None:
+    def __init__(self, protocol_file: Path, manufacturer_file: Path) -> None:
         """
         Initialisiert den Protocol-Parser.
 
         Args:
             protocol_file: Pfad zur YAML-Protokolldatei (z.B. ic905.yaml)
+            manufacturer_file: Pfad zur Herstellerdatei (z.B. ic905_manufacturer.yaml)
         """
         self.protocol_file = Path(protocol_file)
+        self.manufacturer_file = Path(manufacturer_file)
         self.commands: Dict[str, CIVCommand] = {}
         self.preamble: bytes = b'\xFE\xFE'
         self.terminator: int = 0xFD
@@ -82,16 +84,7 @@ class ProtocolParser:
 
     def _parse_protocol(self) -> None:
         """Parst die YAML-Protokolldatei."""
-        if not self.protocol_file.exists():
-            logger.error(f'protocol_file not found: {self.protocol_file}')
-            return
-
-        with open(self.protocol_file, 'r', encoding='utf-8') as f:
-            protocol = yaml.safe_load(f)
-
-        if not protocol:
-            logger.warning(f'Protocol file is empty: {self.protocol_file}')
-            return
+        protocol = self._read_protocol_file()
 
         # Versuche zuerst nested 'protocol' key (neue Struktur)
         root = protocol.get('protocol', protocol)
@@ -162,8 +155,8 @@ class ProtocolParser:
             cmd=cmd,
             subcmd=subcmd,
             description=data.get('description', ''),
-            request_structure=data.get('request', {}).get('structure', []),
-            response_structure=data.get('response', {}).get('structure', []),
+            request_structure=data.get('request', {}),
+            response_structure=data.get('response', {}),
         )
 
     def get_command(self, name: str) -> Optional[CIVCommand]:
@@ -186,6 +179,67 @@ class ProtocolParser:
         """Gibt Liste aller verfügbaren Befehle zurück."""
         return list(self.commands.keys())
 
+    def _read_protocol_file(self) -> Optional[Dict[str, Any]]:
+        """Liest die YAML-Protokolldatei und gibt den Inhalt zurück."""
+        if not self.protocol_file.exists():
+            logger.error(f'protocol_file not found: {self.protocol_file}')
+            return
+
+        with open(self.protocol_file, 'r', encoding='utf-8') as f:
+            protocol = yaml.safe_load(f)
+
+        if not protocol:
+            logger.warning(f'Protocol file is empty: {self.protocol_file}')
+            return
+
+        if not self.manufacturer_file.exists():
+            logger.warning(f'manufacturer_file not found: {self.manufacturer_file} (file is optional; can contain shared datatypes)')
+            return
+
+        with open(self.manufacturer_file, 'r', encoding='utf-8') as f:
+            manufacturer = yaml.safe_load(f)
+
+        # Merge manufacturer data into protocol (manufacturer data types are appended to protocol's data_types if not already defined)
+        if manufacturer:
+            protocol['protocol'] = protocol.get('protocol', {})
+
+            # Merge data types (manufacturer data types haben Vorrang, wenn Schlüssel gleich)
+            data_types_p = protocol.get('protocol', {}).get('data_types')
+            data_types_m = manufacturer.get('data_types')
+            data_types = data_types_p or {}
+            if data_types_m:
+                for key, value in data_types_m.items():
+                    if key not in data_types:
+                        data_types[key] = value
+            protocol['protocol']['data_types'] = data_types
+
+        return protocol
+
+
+    def _read_protocol_command(self, command_name: str) -> str:
+        """Liest einen Befehl aus der YAML-Datei."""
+        # Lesen der YAML-Datei und Suche nach dem Befehl
+        protocol = self._read_protocol_file().get('protocol', {})
+        cmd_data = protocol.get('commands', {}).get(command_name)
+
+        for key in ['request', 'response']:
+            items = cmd_data.get(key, [])
+            if items:
+                for index in range(len(items)):
+                    item = items[index]
+                    if 'type' in item:
+                        # Replace type reference with actual structure from data_types
+                        data_type_name = item['type']
+                        data_types = protocol.get('data_types', {})
+                        if data_type_name in data_types:
+                            cmd_data[key][index] = data_types[data_type_name]
+
+        if cmd_data:
+            return cmd_data
+        else:
+            logger.warning(f'Command "{command_name}" not found in protocol file')
+            return None
+
 
 class CIVCommandExecutor:
     """
@@ -194,15 +248,16 @@ class CIVCommandExecutor:
     Verwaltet Protokoll-Parsing und echte Befehlsausführung über USB/Serial.
     """
 
-    def __init__(self, protocol_file: Path, usb_connection=None) -> None:
+    def __init__(self, protocol_file: Path, manufacturer_file: Path, usb_connection=None) -> None:
         """
         Initialisiert den Command Executor.
 
         Args:
             protocol_file: Pfad zur Protokolldatei
+            manufacturer_file: Pfad zur Herstellerdatei
             usb_connection: USBConnection-Instanz (optional, wird bei Bedarf erstellt)
         """
-        self.parser = ProtocolParser(protocol_file)
+        self.parser = ProtocolParser(protocol_file, manufacturer_file)
         self.usb_connection = usb_connection
         logger.info(
             f'CIV Command Executor initialized with '
@@ -487,24 +542,24 @@ class CIVCommandExecutor:
         if not payload:
             return {}, None
 
+        command = self.parser._read_protocol_command(command_name)
+
+        response = command.get('response', {})
+        if not response:
+            logger.error(f'No response structure defined for command: {command_name}')
+            return {'raw_data': payload.hex()}, None
+
         # Spezielle Dekodierung für bekannte Befehle
-        if command_name == 'read_operating_frequency':
+        if not command:
+            return {'raw_data': payload.hex()}, None
+
+        elif command_name == 'read_operating_frequency':
             if len(payload) < 5:
                 return None, f'Response too short for frequency: {len(payload)} bytes'
 
             bcd_bytes = payload[:5]
             frequency = self._bcd_to_frequency(bcd_bytes)
             return {'frequency': frequency, 'vfo': 'A'}, None
-
-        elif command_name == 'read_operating_mode':
-            if len(payload) < 1:
-                return None, f'Response too short for mode: {len(payload)} bytes'
-
-            mode_code = payload[0]
-            mode_names = {0x01: 'SSB', 0x02: 'AM', 0x03: 'FM', 0x05: 'CW'}
-            mode = mode_names.get(mode_code, 'UNKNOWN')
-            filter_val = payload[1] if len(payload) > 1 else None
-            return {'mode': mode, 'filter': filter_val}, None
 
         elif command_name == 'read_s_meter':
             if len(payload) < 1:
@@ -513,9 +568,72 @@ class CIVCommandExecutor:
             level = payload[0]
             return {'level_high': level, 'level_low': 0}, None
 
-        # Default: Rückgabe Rohdaten
-        return {'raw_data': payload.hex()}, None
+        elif command_name == 'read_transceiver_id':
+            if len(payload) < 1:
+                return None, f'Response too short for transceiver ID: {len(payload)} bytes'
+            return {'id': payload.hex()}, None
 
+        else:
+            # Check data length against response structure
+            payload_length = len(payload)
+            for item in response:
+                if 'size' in item and payload_length == item['size']:
+                    break
+                else:
+                    item = None
+
+            if not item:
+                logger.error(f'No matching response structure found for command: {command_name}')
+                return {'raw_data': payload.hex()}, None
+
+            # Select decoding method based on item definition
+            if not 'encoding' in item:
+                logger.error('No encoding method defined for command, returning raw data')
+                return {'raw_data': payload.hex()}, None
+
+            encoding = item['encoding']
+
+            if encoding == 'bytes':
+                bytes_def = item.get('bytes', [])
+                if not bytes_def:
+                    logger.error('No byte definitions found for bytes encoding, returning raw data')
+                    return {'raw_data': payload.hex()}, None
+
+                return_data = {}
+                for byte_def in bytes_def:
+                    index = byte_def.get('index')
+                    length = byte_def.get('length', 1)
+                    name = byte_def.get('name', f'byte_{index}')
+                    encoding_method = byte_def.get('encoding', 'direct')
+
+                    if index is  None and index + length > len(payload):
+                        logger.error(f'Byte definition index/length out of bounds for payload: {index}+{length} > {len(payload)}')
+                        return {'raw_data': payload.hex()}, None
+
+                    if encoding_method == 'enum':
+                        values = byte_def.get('values', {})
+                        raw_value = payload[index] if length == 1 else payload[index:index+length]
+                        if length == 1:
+                            decoded_value = values.get(raw_value, f'UNKNOWN(0x{raw_value:02X})')
+                        else:
+                            decoded_value = values.get(raw_value.hex(), f'UNKNOWN(0x{raw_value.hex()})')
+                        return_data[name] = decoded_value
+                    else:
+                        return_data[name] = payload[index:index + length].hex()
+
+                return return_data, None
+
+            return {'raw_data': payload.hex()}, None
+
+    # @staticmethod
+    # def _decode_bytes(payload: bytes, command: Dict[str, Any]):
+    #     """Dekodiert Payload-Bytes basierend auf der Befehlsdefinition."""
+    #     bytes = command['encoding'].get('bytes', [])
+    #     print(f'Decoding bytes for command: {command["name"]}')
+
+
+
+# finding: These functions do not use the YAML-files of the CI-V protocol. (see #9 GitHub issue for details)
     @staticmethod
     def _frequency_to_bcd(frequency_hz: int) -> bytes:
         """Konvertiert Frequenz (Hz) in BCD-Format für CI-V."""

@@ -1,11 +1,11 @@
 {
   "usb": {
     "port": "COM4",
-    "baud_rate": 115200,
+    "baud_rate": 19200,
     "data_bits": 8,
     "stop_bits": 1,
     "parity": "N",
-    "timeout": 1.0,
+    "timeout": 100.0,
     "reconnect_interval": 5
   },
   "api": {
@@ -19,11 +19,17 @@
   "wavelog": {
     "enabled": false,
     "api_url": "https://api.wavelog.local",
-    "api_key": "",
+    "api_key_secret_ref": "",
     "polling_interval": 5
   },
+  "secret_provider": {
+    "provider": "vault",
+    "vault_url": "http://127.0.0.1:8200",
+    "vault_mount": "secret",
+    "token_file": "/run/secrets/vault_token"
+  },
   "device": {
-    "name": "Icom IC-905",
+    "name": "Icom IC905",
     "manufacturer": "icom",
     "protocol_file": "ic905"
   }

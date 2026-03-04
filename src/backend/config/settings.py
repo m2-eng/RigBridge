@@ -10,7 +10,6 @@ from typing import Optional, Any, Dict
 from pathlib import Path
 from enum import Enum
 import json
-import os
 
 
 class LogLevel(str, Enum):
@@ -49,8 +48,17 @@ class WavelogConfig:
     """Wavelog CAT-Integrationen."""
     enabled: bool = False
     api_url: str = 'https://api.wavelog.local'
-    api_key: str = ''
+    api_key_secret_ref: str = ''
     polling_interval: int = 5
+
+
+@dataclass
+class SecretProviderConfig:
+    """Secret-Provider-Konfiguration."""
+    provider: str = 'vault'
+    vault_url: str = 'http://127.0.0.1:8200'
+    vault_mount: str = 'secret'
+    token_file: str = '/run/secrets/vault_token'
 
 
 @dataclass
@@ -59,6 +67,12 @@ class DeviceConfig:
     name: str = 'Icom IC-905'
     manufacturer: str = 'icom'  # Hersteller: 'icom', 'yaesu', 'kenwood', etc.
     protocol_file: str = 'ic905'  # YAML-Dateiname ohne Pfad und Endung
+
+    def get_manufacturer_path(self) -> Path:
+        """Konstruiert den vollständigen Pfad zur Herstellerdatei."""
+        return Path(
+            f'protocols/manufacturers/{self.manufacturer}/{self.manufacturer}.yaml'
+        )
 
     def get_protocol_path(self) -> Path:
         """Konstruiert den vollständigen Pfad zur Protokolldatei."""
@@ -73,6 +87,7 @@ class RigBridgeConfig:
     usb: USBConfig = field(default_factory=USBConfig)
     api: APIConfig = field(default_factory=APIConfig)
     wavelog: WavelogConfig = field(default_factory=WavelogConfig)
+    secret_provider: SecretProviderConfig = field(default_factory=SecretProviderConfig)
     device: DeviceConfig = field(default_factory=DeviceConfig)
     config_file: Optional[Path] = None
 
@@ -89,6 +104,7 @@ class RigBridgeConfig:
             'usb': asdict(self.usb),
             'api': {**asdict(self.api), 'log_level': self.api.log_level.value},
             'wavelog': asdict(self.wavelog),
+            'secret_provider': asdict(self.secret_provider),
             'device': asdict(self.device),
         }
 
@@ -114,38 +130,12 @@ class RigBridgeConfig:
             config.api = APIConfig(**api_data)
         if 'wavelog' in data:
             config.wavelog = WavelogConfig(**data['wavelog'])
+        if 'secret_provider' in data:
+            config.secret_provider = SecretProviderConfig(**data['secret_provider'])
         if 'device' in data:
             config.device = DeviceConfig(**data['device'])
 
         return config
-
-    def override_from_env(self) -> None:
-        """Überschreibt Konfiguration mit Umgebungsvariablen (12-Factor)."""
-        # USB
-        if port := os.getenv('RIGBRIDGE_USB_PORT'):
-            self.usb.port = port
-        if baud := os.getenv('RIGBRIDGE_USB_BAUD'):
-            self.usb.baud_rate = int(baud)
-
-        # API
-        if api_host := os.getenv('RIGBRIDGE_API_HOST'):
-            self.api.host = api_host
-        if api_port := os.getenv('RIGBRIDGE_API_PORT'):
-            self.api.port = int(api_port)
-        if log_level := os.getenv('RIGBRIDGE_LOG_LEVEL'):
-            self.api.log_level = LogLevel(log_level.upper())
-
-        # Wavelog
-        if wavelog_enabled := os.getenv('RIGBRIDGE_WAVELOG_ENABLED'):
-            self.wavelog.enabled = wavelog_enabled.lower() == 'true'
-        if wavelog_url := os.getenv('RIGBRIDGE_WAVELOG_URL'):
-            self.wavelog.api_url = wavelog_url
-        if wavelog_key := os.getenv('RIGBRIDGE_WAVELOG_KEY'):
-            self.wavelog.api_key = wavelog_key
-
-        # Device
-        if device_name := os.getenv('RIGBRIDGE_DEVICE_NAME'):
-            self.device.name = device_name
 
 
 class ConfigManager:
@@ -166,14 +156,12 @@ class ConfigManager:
 
         Lade-Reihenfolge:
         1. JSON-Datei (falls vorhanden)
-        2. Umgebungsvariablen (überschreibt Datei)
         """
         manager = ConfigManager()
         default_path = Path('config.json')
         config_path = config_file or default_path
 
         manager._config = RigBridgeConfig.load(config_path)
-        manager._config.override_from_env()
 
         return manager._config
 

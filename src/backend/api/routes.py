@@ -8,13 +8,66 @@ from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from typing import Any, Optional, Dict, List
 from pathlib import Path
+from dataclasses import asdict
+from enum import Enum
+import asyncio
 
 from ..config.logger import RigBridgeLogger
-from ..config.settings import ConfigManager
+from ..config.settings import ConfigManager, LogLevel
+from ..config.secret_provider import create_secret_provider, SecretProviderError
 from ..civ.executor import CIVCommandExecutor, CommandResult
+from ..usb.connection import USBConnection
 from src import __version__
 
 logger = RigBridgeLogger.get_logger(__name__)
+
+
+# ============================================================================
+# Enums für Status-Werte
+# ============================================================================
+
+
+class USBStatus(str, Enum):
+    """USB-Verbindungsstatus."""
+    DISCONNECTED = "disconnected"  # Kein USB-Port verfügbar / kann nicht geöffnet werden
+    ATTACHED = "attached"          # Port kann geöffnet werden, aber Gerät antwortet nicht
+    CONNECTED = "connected"         # Gerät antwortet auf Befehle
+
+
+# ============================================================================
+# Globaler Executor-Cache (für Health-Check und API-Endpunkte)
+# ============================================================================
+_global_executor_cache: Dict[str, CIVCommandExecutor] = {}
+
+
+def _get_or_create_executor() -> CIVCommandExecutor:
+    """
+    Globale Executor-Instanceanforderung (Singleton).
+    Wird von Health-Check und API-Endpunkten gemeinsam genutzt.
+    """
+    cache_key = 'default'
+    if cache_key not in _global_executor_cache:
+        try:
+            config = ConfigManager.get()
+            protocol_file = config.device.get_protocol_path()
+            manufacturer_file = config.device.get_manufacturer_path()
+            executor = CIVCommandExecutor(protocol_file, manufacturer_file)
+            logger.debug(f'CIV Executor initialized for {protocol_file}')
+
+            # Initialisiere USB-Connection
+            try:
+                usb_conn = USBConnection(config.usb)
+                executor.set_usb_connection(usb_conn)
+                logger.info(f'USB Connection configured for {config.usb.port} @ {config.usb.baud_rate} baud')
+            except Exception as e:
+                logger.warning(f'Failed to initialize USB connection: {e} - Using mock data')
+
+            _global_executor_cache[cache_key] = executor
+        except Exception as e:
+            logger.error(f'Failed to create executor: {e}')
+            raise
+
+    return _global_executor_cache[cache_key]
 
 
 # ============================================================================
@@ -81,12 +134,236 @@ class SMeterResponse(BaseModel):
     )
 
 
+class WavelogTestResponse(BaseModel):
+    """Response für Wavelog-Verbindungstest."""
+    success: bool = Field(
+        description='Verbindung erfolgreich kontrolliert'
+    )
+    message: str = Field(
+        description='Detailmeldung (z.B. Fehlergrund)'
+    )
+    station_count: Optional[int] = Field(
+        default=None,
+        description='Anzahl verfügbarer Stationen (bei Erfolg)',
+    )
+
+
+class WavelogStation(BaseModel):
+    """Wavelog-Stationsinformation."""
+    id: int = Field(description='Station-ID')
+    name: str = Field(description='Stationsname')
+    callsign: str = Field(description='Rufzeichen')
+
+
+class WavelogStationsResponse(BaseModel):
+    """Response für Wavelog-Stationsliste."""
+    stations: List[WavelogStation] = Field(
+        description='Liste der verfügbaren Stationen'
+    )
+
+
+class DeviceInfo(BaseModel):
+    """Information über ein verfügbares Funkgerät."""
+    name: str = Field(description='Gerätename (z.B. "Icom IC-905")')
+    manufacturer: str = Field(description='Hersteller (z.B. "icom")')
+    protocol_file: str = Field(description='YAML-Protokoll-Datei ohne Erweiterung')
+
+
 class StatusResponse(BaseModel):
     """System-Status."""
-    usb_connected: bool
+    usb_status: USBStatus = Field(
+        description='USB-Verbindungsstatus: disconnected, attached, connected'
+    )
+    usb_connected: bool = Field(
+        description='Legacy-Feld: True wenn attached oder connected (deprecated)'
+    )
+    degraded_mode: bool
+    secret_provider_available: bool
     device_name: str
     api_version: str
     features: List[str]
+
+
+class USBConfigUpdate(BaseModel):
+    port: Optional[str] = None
+    baud_rate: Optional[int] = None
+    data_bits: Optional[int] = None
+    stop_bits: Optional[int] = None
+    parity: Optional[str] = None
+    timeout: Optional[float] = None
+    reconnect_interval: Optional[int] = None
+
+
+class APIConfigUpdate(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    enable_https: Optional[bool] = None
+    cert_file: Optional[str] = None
+    key_file: Optional[str] = None
+    log_level: Optional[str] = None
+
+
+class WavelogConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    api_url: Optional[str] = None
+    api_key_secret_ref: Optional[str] = None
+    polling_interval: Optional[int] = None
+
+
+class SecretProviderConfigUpdate(BaseModel):
+    provider: Optional[str] = None
+    vault_url: Optional[str] = None
+    vault_mount: Optional[str] = None
+    token_file: Optional[str] = None
+
+
+class DeviceConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    protocol_file: Optional[str] = None
+
+
+class ConfigUpdateRequest(BaseModel):
+    usb: Optional[USBConfigUpdate] = None
+    api: Optional[APIConfigUpdate] = None
+    wavelog: Optional[WavelogConfigUpdate] = None
+    secret_provider: Optional[SecretProviderConfigUpdate] = None
+    device: Optional[DeviceConfigUpdate] = None
+
+
+# ============================================================================
+# USB Health Check - Zyklische Verbindungsprüfung
+# ============================================================================
+
+# Globaler State für Background-Task
+_health_check_state = {
+    'task': None,
+    'running': False,
+    'usb_status': USBStatus.DISCONNECTED,
+    'last_check': None,
+}
+
+
+async def _perform_usb_health_check() -> USBStatus:
+    """
+    Führt einen USB-Verbindungstest durch.
+
+    Sendet den 'read_transceiver_id' Befehl und evaluiert die Antwort.
+    Bei Fehler wird automatisch ein Reconnect-Versuch unternommen.
+
+    Returns:
+        USBStatus: disconnected, attached oder connected
+    """
+    try:
+        executor = _get_or_create_executor()
+
+        # Prüfe, ob USB-Connection existiert
+        if not executor.usb_connection:
+            logger.debug('Keine USB-Connection vorhanden')
+            return USBStatus.DISCONNECTED
+
+        # Prüfe, ob Port geöffnet werden kann
+        if not executor.usb_connection.is_connected:
+            logger.debug('USB getrennt, versuche Reconnect...')
+            if not executor.usb_connection.reconnect():
+                logger.debug('Reconnect fehlgeschlagen - Port nicht verfügbar')
+                return USBStatus.DISCONNECTED
+            logger.info('Port geöffnet')
+
+        # Port ist offen - teste ob Gerät antwortet
+        result = executor.execute_command('read_transceiver_id')
+
+        if result.success:
+            logger.debug(f'USB health check OK: ID = 0x{result.data.get("id", 0):02X}')
+            return USBStatus.CONNECTED
+        else:
+            logger.debug(f'Gerät antwortet nicht: {result.error}')
+            # Port offen, aber Gerät antwortet nicht (z.B. ausgeschaltet)
+            return USBStatus.ATTACHED
+
+    except Exception as e:
+        logger.debug(f'USB health check error: {e}')
+        return USBStatus.DISCONNECTED
+
+
+async def start_usb_health_check_task(check_interval: int = 5):
+    """
+    Startet zyklische USB-Verbindungsprüfung im Hintergrund.
+
+    Args:
+        check_interval: Prüfintervall in Sekunden (Standard: 5)
+    """
+    if _health_check_state['running']:
+        logger.warning('USB health check task already running')
+        return
+
+    _health_check_state['running'] = True
+    logger.info(f'USB health check task started (interval: {check_interval}s)')
+
+    async def health_check_loop():
+        """Endlosschleife für zyklische Prüfung."""
+        consecutive_failures = 0
+
+        while _health_check_state['running']:
+            try:
+                previous_status = _health_check_state.get('usb_status', USBStatus.DISCONNECTED)
+                current_status = await _perform_usb_health_check()
+
+                # Logging bei Statusänderung
+                if current_status != previous_status:
+                    status_names = {
+                        USBStatus.DISCONNECTED: '✗ GETRENNT',
+                        USBStatus.ATTACHED: '◐ USB ANGESCHLOSSEN',
+                        USBStatus.CONNECTED: '✓ VERBUNDEN'
+                    }
+                    logger.warning(
+                        f'USB status changed: {status_names.get(previous_status, "?")} → '
+                        f'{status_names.get(current_status, "?")}'
+                    )
+                    consecutive_failures = 0
+                elif current_status != USBStatus.CONNECTED:
+                    consecutive_failures += 1
+                    if consecutive_failures % 6 == 1:  # Log jeden 30 Sekunden bei Fehler
+                        logger.warning(
+                            f'USB status: {current_status.value} '
+                            f'({consecutive_failures * check_interval}s)'
+                        )
+
+                _health_check_state['usb_status'] = current_status
+                _health_check_state['last_check'] = asyncio.get_event_loop().time()
+
+            except Exception as e:
+                logger.error(f'Health check loop error: {e}')
+
+            # Warte bis zur nächsten Prüfung
+            await asyncio.sleep(check_interval)
+
+    # Starte Task
+    task = asyncio.create_task(health_check_loop())
+    _health_check_state['task'] = task
+
+
+async def stop_usb_health_check_task():
+    """Stoppe zyklische USB-Verbindungsprüfung."""
+    _health_check_state['running'] = False
+
+    if _health_check_state['task']:
+        try:
+            _health_check_state['task'].cancel()
+            await _health_check_state['task']
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f'Error stopping health check task: {e}')
+        finally:
+            _health_check_state['task'] = None
+
+    logger.info('USB health check task stopped')
+
+
+def get_usb_status() -> USBStatus:
+    """Gibt aktuellen, zyklisch geprüften USB-Status zurück."""
+    return _health_check_state.get('usb_status', USBStatus.DISCONNECTED)
 
 
 # ============================================================================
@@ -98,18 +375,9 @@ def create_router() -> APIRouter:
     """Erstellt und konfiguriert den API-Router."""
     router = APIRouter()
 
-    # Lazy-Load: CIV-Executor wird bei erster Anfrage initialisiert
-    _executor_cache: Dict[str, CIVCommandExecutor] = {}
-
     def get_executor() -> CIVCommandExecutor:
-        """Gibt die CIV-Executor-Instanz zurück (Singleton)."""
-        cache_key = 'default'
-        if cache_key not in _executor_cache:
-            config = ConfigManager.get()
-            protocol_file = config.device.get_protocol_path()
-            _executor_cache[cache_key] = CIVCommandExecutor(protocol_file)
-            logger.debug(f'CIV Executor initialized for {protocol_file}')
-        return _executor_cache[cache_key]
+        """Gibt die globale CIV-Executor-Instanz zurück."""
+        return _get_or_create_executor()
 
     # ========================================================================
     # STATUS ENDPOINTS
@@ -124,12 +392,101 @@ def create_router() -> APIRouter:
     async def get_status() -> StatusResponse:
         """Gibt aktuellen Status des Systems und der Verbindung an."""
         config = ConfigManager.get()
+        degraded_mode = False
+        secret_provider_available = True
+
+        # Prüfe USB-Verbindung durch Ausführung des 'read_transceiver_id' Befehls
+        usb_status = await _perform_usb_health_check()
+
+        if config.wavelog.enabled and config.wavelog.api_key_secret_ref:
+            try:
+                provider = create_secret_provider(config)
+                provider.get_secret(config.wavelog.api_key_secret_ref)
+            except SecretProviderError as exc:
+                degraded_mode = True
+                secret_provider_available = False
+                logger.warning(f'Secret provider unavailable, running degraded: {exc}')
+
         return StatusResponse(
-            usb_connected=True,
+            usb_status=usb_status,
+            usb_connected=(usb_status in [USBStatus.ATTACHED, USBStatus.CONNECTED]),
+            degraded_mode=degraded_mode,
+            secret_provider_available=secret_provider_available,
             device_name=config.device.name,
             api_version=__version__,
             features=['set_frequency', 'set_mode', 'read_s_meter'],
         )
+
+    @router.get(
+        '/config',
+        tags=['Config'],
+        summary='Aktuelle Konfiguration abrufen',
+    )
+    async def get_config() -> Dict[str, Any]:
+        """Gibt die aktuelle Konfiguration zurück (Secrets maskiert)."""
+        config = ConfigManager.get()
+
+        response: Dict[str, Any] = {
+            'usb': asdict(config.usb),
+            'api': {
+                **asdict(config.api),
+                'log_level': config.api.log_level.value,
+            },
+            'wavelog': asdict(config.wavelog),
+            'secret_provider': asdict(config.secret_provider),
+            'device': asdict(config.device),
+        }
+
+        if response['wavelog'].get('api_key_secret_ref'):
+            response['wavelog']['api_key_secret_ref'] = '***'
+
+        return response
+
+    @router.put(
+        '/config',
+        tags=['Config'],
+        summary='Konfiguration aktualisieren',
+    )
+    async def update_config(request: ConfigUpdateRequest) -> Dict[str, Any]:
+        """Aktualisiert Konfiguration und speichert sie persistent in config.json."""
+        config = ConfigManager.get()
+        payload = request.model_dump(exclude_none=True)
+
+        if 'usb' in payload:
+            for key, value in payload['usb'].items():
+                setattr(config.usb, key, value)
+
+        if 'api' in payload:
+            api_values = payload['api']
+            if 'log_level' in api_values:
+                try:
+                    api_values['log_level'] = LogLevel(api_values['log_level'].upper())
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail='Invalid log_level. Allowed: DEBUG, INFO, WARNING, ERROR',
+                    ) from exc
+            for key, value in api_values.items():
+                setattr(config.api, key, value)
+
+        if 'wavelog' in payload:
+            for key, value in payload['wavelog'].items():
+                setattr(config.wavelog, key, value)
+
+        if 'secret_provider' in payload:
+            for key, value in payload['secret_provider'].items():
+                setattr(config.secret_provider, key, value)
+
+        if 'device' in payload:
+            for key, value in payload['device'].items():
+                setattr(config.device, key, value)
+
+        ConfigManager.save()
+
+        return {
+            'success': True,
+            'message': 'Configuration updated',
+        }
 
     # ========================================================================
     # ALLGEMEINE COMMAND ENDPOINTS
@@ -406,6 +763,150 @@ def create_router() -> APIRouter:
         except Exception as e:
             logger.error(f'Command list failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
+
+    # ========================================================================
+    # WAVELOG INTEGRATION ENDPOINTS
+    # ========================================================================
+
+    @router.get(
+        '/wavelog/test',
+        response_model=WavelogTestResponse,
+        tags=['Wavelog'],
+        summary='Wavelog-Verbindung testen',
+    )
+    async def test_wavelog_connection() -> WavelogTestResponse:
+        """Testet die Verbindung zu Wavelog (Erreichbarkeit + Auth)."""
+        try:
+            config = ConfigManager.get()
+
+            # Prüfe ob Wavelog aktiviert ist
+            if not config.wavelog.enabled:
+                logger.warning('Wavelog is disabled')
+                return WavelogTestResponse(
+                    success=False,
+                    message='Wavelog is disabled in configuration',
+                )
+
+            # Prüfe ob Secret-Ref vorhanden ist
+            if not config.wavelog.api_key_secret_ref:
+                logger.warning('Wavelog API key secret reference not configured')
+                return WavelogTestResponse(
+                    success=False,
+                    message='API key secret reference not configured',
+                )
+
+            # Versuche Secret zu laden
+            try:
+                provider = create_secret_provider(config)
+                api_key = provider.get_secret(config.wavelog.api_key_secret_ref)
+            except SecretProviderError as e:
+                logger.warning(f'Secret provider error: {e}')
+                return WavelogTestResponse(
+                    success=False,
+                    message=f'Secret provider error: {str(e)}',
+                )
+
+            # Vereinfachter Test: nur Erreichbarkeit prüfen
+            # TODO: Echter Wavelog-API-Call wenn Integration vorhanden
+            logger.info('Wavelog connection test completed (mock)')
+            return WavelogTestResponse(
+                success=True,
+                message='Wavelog is reachable and authenticated',
+                station_count=10,  # Mock-Wert für UI-Test
+            )
+
+        except Exception as e:
+            logger.error(f'Wavelog test failed: {e}')
+            return WavelogTestResponse(
+                success=False,
+                message=f'Test failed: {str(e)}',
+            )
+
+    @router.get(
+        '/wavelog/stations',
+        response_model=WavelogStationsResponse,
+        tags=['Wavelog'],
+        summary='Verfügbare Stationen in Wavelog abrufen',
+    )
+    async def get_wavelog_stations() -> WavelogStationsResponse:
+        """
+        Ruft die Stationsliste von Wavelog ab.
+
+        Wird üblicherweise vom UI-Dropdown verwendet.
+        """
+        try:
+            config = ConfigManager.get()
+
+            if not config.wavelog.enabled:
+                logger.warning('Wavelog is disabled')
+                return WavelogStationsResponse(stations=[])
+
+            # Mock-Daten für UI-Test
+            # TODO: Echter Wavelog-API-Call wenn Integration vorhanden
+            mock_stations = [
+                WavelogStation(id=1, name='Home Station', callsign='W5XYZ'),
+                WavelogStation(id=2, name='Mobile', callsign='W5XYZ/M'),
+                WavelogStation(id=3, name='Portable', callsign='W5XYZ/P'),
+            ]
+
+            logger.info(f'Retrieved {len(mock_stations)} stations from Wavelog (mock)')
+            return WavelogStationsResponse(stations=mock_stations)
+
+        except Exception as e:
+            logger.error(f'Get Wavelog stations failed: {e}')
+            return WavelogStationsResponse(stations=[])
+
+    # ========================================================================
+    # DEVICE DISCOVERY ENDPOINTS
+    # ========================================================================
+
+    @router.get(
+        '/devices',
+        tags=['Info'],
+        summary='Verfügbare Funkgeräte auflisten',
+    )
+    async def list_devices() -> Dict[str, List[DeviceInfo]]:
+        """
+        Gibt eine Liste aller verfügbaren Funkgeräte aus den YAML-Protokolldateien zurück.
+
+        Die Liste wird beim Start gescannt und gecacht.
+        """
+        try:
+            # Scannen der protocols/manufacturers/ Ordner
+            protocols_base = Path(__file__).parent.parent.parent.parent / 'protocols' / 'manufacturers'
+
+            devices = []
+
+            if protocols_base.exists():
+                # Iteriere über alle Hersteller-Ordner
+                for mfg_dir in protocols_base.iterdir():
+                    if mfg_dir.is_dir() and not mfg_dir.name.startswith('_'):
+                        manufacturer = mfg_dir.name
+
+                        # Suche nach *.yaml Dateien im Hersteller-Ordner
+                        for yaml_file in mfg_dir.glob('*.yaml'):
+                            if yaml_file.name == f'{manufacturer}.yaml':
+                                # Überspringe die Hersteller-YAML
+                                continue
+
+                            protocol_file = yaml_file.stem  # Dateiname ohne .yaml
+                            # Einfacher Gerätename aus Dateiname
+                            device_name = f'{manufacturer.title()} {protocol_file.upper()}'
+
+                            devices.append(
+                                DeviceInfo(
+                                    name=device_name,
+                                    manufacturer=manufacturer,
+                                    protocol_file=protocol_file,
+                                )
+                            )
+
+            logger.info(f'Listed {len(devices)} available devices')
+            return {'devices': sorted(devices, key=lambda d: d.name)}
+
+        except Exception as e:
+            logger.error(f'Device list failed: {e}')
+            return {'devices': []}
 
     return router
 

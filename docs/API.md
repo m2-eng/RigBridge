@@ -270,18 +270,10 @@ Docker/Monitoring Health-Check.
 }
 ```
 
-### Umgebungsvariablen (12-Factor)
+### Konfiguration
 
-Umgebungsvariablen überschreiben `config.json`:
-
-```bash
-export RIGBRIDGE_USB_PORT=/dev/ttyUSB1
-export RIGBRIDGE_API_PORT=8081
-export RIGBRIDGE_LOG_LEVEL=DEBUG
-export RIGBRIDGE_DEVICE_NAME="Icom IC-7300"
-
-python run_api.py
-```
+Die Konfiguration erfolgt ausschließlich über `config.json`.
+Änderungen können direkt in der Datei oder über `PUT /api/config` erfolgen.
 
 ---
 
@@ -299,10 +291,7 @@ Das System verwendet strukturiertes Logging mit einheitlichem Format:
 
 **Log-Level konfigurieren:**
 
-```bash
-export RIGBRIDGE_LOG_LEVEL=DEBUG    # Verbose Logging
-export RIGBRIDGE_LOG_LEVEL=ERROR    # Nur Fehler
-```
+Setze `api.log_level` in `config.json` auf `DEBUG`, `INFO`, `WARNING` oder `ERROR`.
 
 ---
 
@@ -324,14 +313,16 @@ Für Netzwerk-Zugriff:
 - Aktiviere HTTPS mit `enable_https: true`
 - Stelle TLS-Zertifikat bereit
 
-### Secrets-Verschlüsselung
+### Secrets
 
-API-Keys und Passwörter werden **verschlüsselt** in `config.json` gespeichert:
+Secrets (z.B. API-Keys) werden **nicht** in `config.json` gespeichert.
+Stattdessen wird in `config.json` nur eine Secret-Referenz (`api_key_secret_ref`) hinterlegt,
+die zur Laufzeit über den konfigurierten Secret-Provider (z.B. Vault) aufgelöst wird.
 
 ```json
 {
   "wavelog": {
-    "api_key": "encrypted:{base64-encrypted-key}"
+    "api_key_secret_ref": "rigbridge/wavelog#api_key"
   }
 }
 ```
