@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from contextlib import asynccontextmanager
 import logging
 import asyncio
 
@@ -43,6 +44,26 @@ def create_app(
     Returns:
         Konfigurierte FastAPI-Instanz
     """
+    # Lifespan Context Manager für Startup/Shutdown Events
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Lifespan-Handler für Startup/Shutdown Events."""
+        # Startup: Starte USB-Health-Check Background-Task
+        try:
+            asyncio.create_task(start_usb_health_check_task())
+            logger.info('USB health check task started')
+        except Exception as e:
+            logger.error(f'Failed to start USB health check task: {e}')
+
+        yield
+
+        # Shutdown: Stoppe USB-Health-Check
+        try:
+            await stop_usb_health_check_task()
+            logger.info('USB health check task stopped')
+        except Exception as e:
+            logger.error(f'Failed to stop USB health check task: {e}')
+
     # Logger konfigurieren
     level_map = {
         LogLevel.DEBUG: logging.DEBUG,
@@ -98,6 +119,7 @@ def create_app(
         version=app_version,
         docs_url='/api/docs',
         redoc_url='/api/redoc',
+        lifespan=lifespan,
         openapi_url='/api/openapi.json',
     )
 
@@ -157,26 +179,6 @@ def create_app(
     # Router registrieren
     router = create_router()
     app.include_router(router, prefix='/api')
-
-    # Startup-Event: Starte USB-Health-Check Background-Task
-    @app.on_event('startup')
-    async def startup_usb_health_check():
-        """Starte zyklische USB-Verbindungsprüfung beim Start."""
-        try:
-            asyncio.create_task(start_usb_health_check_task())
-            logger.info('USB health check task started')
-        except Exception as e:
-            logger.error(f'Failed to start USB health check task: {e}')
-
-    # Shutdown-Event: Stoppe USB-Health-Check
-    @app.on_event('shutdown')
-    async def shutdown_usb_health_check():
-        """Stoppe zyklische Prüfung beim Shutdown."""
-        try:
-            await stop_usb_health_check_task()
-            logger.info('USB health check task stopped')
-        except Exception as e:
-            logger.error(f'Failed to stop USB health check task: {e}')
 
     # Statische Dateien: Frontend (nur wenn vorhanden)
     frontend_path = Path(__file__).parent.parent.parent / 'frontend'
