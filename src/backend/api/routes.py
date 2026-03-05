@@ -9,6 +9,7 @@ Keine Race Conditions zwischen Health-Check und API-Befehlen.
 
 import asyncio
 import httpx
+import logging
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from typing import Any, Optional, Dict, List
@@ -691,6 +692,44 @@ def create_router() -> APIRouter:
         )
 
     @router.get(
+        '/logs',
+        tags=['Logs'],
+        summary='System-Logs abrufen',
+    )
+    async def get_logs(
+        limit: int = Query(20, description='Max. Anzahl der Logs'),
+        level: Optional[str] = Query(None, description='Optionaler Level-Filter (DEBUG/INFO/WARNING/ERROR/CRITICAL)'),
+        newest_first: bool = Query(True, description='Neueste Eintraege zuerst ausgeben'),
+    ) -> Dict[str, Any]:
+        """
+        Gibt die letzten System-Logs zurück (max. 1000 Zeilen im Buffer).
+
+        Args:
+            limit: Max. Anzahl der neuesten Logs (Standard: 20)
+            level: Optionales Log-Level fuer serverseitiges Filtern
+            newest_first: Reihenfolge der Ausgabe (neueste zuerst bei True)
+
+        Returns:
+            Dict mit 'logs' (Liste) und 'total' (Gesamtanzahl)
+        """
+        try:
+            logs = RigBridgeLogger.get_logs(
+                limit=limit,
+                level=level,
+                newest_first=newest_first,
+            )
+            return {
+                'logs': logs,
+                'total': len(logs),
+                'limit': limit,
+                'level': level,
+                'newest_first': newest_first,
+            }
+        except Exception as e:
+            logger.error(f'Failed to retrieve logs: {e}')
+            raise HTTPException(status_code=500, detail=f'Failed to retrieve logs: {str(e)}')
+
+    @router.get(
         '/config',
         response_model=ConfigResponse,
         tags=['Config'],
@@ -736,11 +775,28 @@ def create_router() -> APIRouter:
 
         if 'api' in payload:
             api_values = payload['api']
+            log_level_changed = False
+
             if 'log_level' in api_values:
                 try:
+                    old_level = config.api.log_level
                     config.api.log_level = LogLevel(api_values['log_level'])
+
+                    # Logger neu konfigurieren wenn Log-Level sich geändert hat
+                    if old_level != config.api.log_level:
+                        log_level_changed = True
+                        level_map = {
+                            LogLevel.DEBUG: logging.DEBUG,
+                            LogLevel.INFO: logging.INFO,
+                            LogLevel.WARNING: logging.WARNING,
+                            LogLevel.ERROR: logging.ERROR,
+                        }
+                        RigBridgeLogger.configure(level=level_map[config.api.log_level])
+                        logger.info(f"Log-Level geändert: {old_level.value} → {config.api.log_level.value}")
+
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail=f'Invalid log_level: {exc}')
+
             for key, value in api_values.items():
                 if key != 'log_level':
                     setattr(config.api, key, value)

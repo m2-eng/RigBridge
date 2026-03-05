@@ -10,6 +10,77 @@ import sys
 import re
 from typing import Optional
 from pathlib import Path
+from collections import deque
+
+
+class InMemoryLogHandler(logging.Handler):
+    """Handler, der die letzten Logs im Memory speichert (max. 1000 Zeilen)."""
+
+    MAX_LOGS = 1000
+    # Regex zum Entfernen von ANSI-Escape-Sequenzen
+    ANSI_ESCAPE_PATTERN = re.compile(r'\033\[[0-9;]*m')
+
+    def __init__(self):
+        super().__init__()
+        self.log_records = deque(maxlen=self.MAX_LOGS)
+        # Erstelle einen Dummy-Formatter für formatTime()
+        self._formatter = logging.Formatter()
+
+    @staticmethod
+    def _remove_ansi_codes(text: str) -> str:
+        """Entfernt ANSI-Escape-Codes aus einem String."""
+        return InMemoryLogHandler.ANSI_ESCAPE_PATTERN.sub('', text)
+
+    def emit(self, record: logging.LogRecord):
+        """Speichert Log-Eintrag im Memory mit formatiertem Original-Zeitstempel."""
+        try:
+            # Formatiere den Zeitstempel wie in StructuredFormatter: YYYY-MM-DD HH:MM:SS.mmm
+            dt_str = self._formatter.formatTime(record, "%Y-%m-%d %H:%M:%S")
+            timestamp = f"{dt_str}.{int(record.msecs):03d}"
+
+            # Speichere nur die rohe Nachricht, nicht die formatierte Ausgabe
+            msg = record.getMessage()
+            # Entferne ANSI-Farb-Codes falls vorhanden
+            clean_msg = self._remove_ansi_codes(msg)
+            self.log_records.append({
+                'timestamp': timestamp,
+                'level': record.levelname,
+                'name': record.name,
+                'message': clean_msg,
+            })
+        except Exception:
+            self.handleError(record)
+
+    def get_logs(
+        self,
+        limit: Optional[int] = None,
+        level: Optional[str] = None,
+        newest_first: bool = False,
+    ) -> list:
+        """
+        Gibt die letzten Logs zurück.
+
+        Args:
+            limit: Max. Anzahl der Logs (Standard: alle)
+            level: Optionales Log-Level (z.B. 'INFO', 'ERROR')
+            newest_first: Wenn True, neueste Eintraege zuerst
+
+        Returns:
+            Liste von Log-Dicts mit timestamp, level, name, message
+        """
+        logs = list(self.log_records)
+
+        if level:
+            wanted = level.upper()
+            logs = [entry for entry in logs if entry.get('level', '').upper() == wanted]
+
+        if limit:
+            logs = logs[-limit:]
+
+        if newest_first:
+            logs.reverse()
+
+        return logs
 
 
 class SecretRedactionFilter(logging.Filter):
@@ -99,6 +170,7 @@ class RigBridgeLogger:
         self.default_level = logging.INFO
         self.log_file: Optional[Path] = None
         self._redaction_filter = SecretRedactionFilter()
+        self._memory_handler = InMemoryLogHandler()
         self._initialized = True
 
     @staticmethod
@@ -125,6 +197,12 @@ class RigBridgeLogger:
             stdout_handler.setFormatter(StructuredFormatter())
             stdout_handler.addFilter(instance._redaction_filter)
             logger.addHandler(stdout_handler)
+
+            # Memory-Handler (für Web-UI Logs)
+            instance._memory_handler.setLevel(instance.default_level)
+            instance._memory_handler.setFormatter(StructuredFormatter())
+            instance._memory_handler.addFilter(instance._redaction_filter)
+            logger.addHandler(instance._memory_handler)
 
             # Datei-Handler (optional)
             if instance.log_file:
@@ -167,3 +245,33 @@ class RigBridgeLogger:
         """Gibt den global verwendeten Secret-Redaction-Filter zurück."""
         instance = RigBridgeLogger()
         return instance._redaction_filter
+
+    @staticmethod
+    def get_memory_handler() -> InMemoryLogHandler:
+        """Gibt den globalen InMemoryLogHandler für Web-UI Logs zurück."""
+        instance = RigBridgeLogger()
+        return instance._memory_handler
+
+    @staticmethod
+    def get_logs(
+        limit: Optional[int] = None,
+        level: Optional[str] = None,
+        newest_first: bool = False,
+    ) -> list:
+        """
+        Gibt die zuletzt gesammelten Logs zurück.
+
+        Args:
+            limit: Max. Anzahl der Logs (Standard: alle)
+            level: Optionales Log-Level (z.B. 'INFO', 'ERROR')
+            newest_first: Wenn True, neueste Eintraege zuerst
+
+        Returns:
+            Liste von Log-Dicts mit timestamp, level, name, message
+        """
+        instance = RigBridgeLogger()
+        return instance._memory_handler.get_logs(
+            limit=limit,
+            level=level,
+            newest_first=newest_first,
+        )

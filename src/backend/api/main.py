@@ -98,6 +98,7 @@ def create_app(
     }
     RigBridgeLogger.configure(level=level_map[effective_log_level])
     redaction_filter = RigBridgeLogger.get_redaction_filter()
+    memory_handler = RigBridgeLogger.get_memory_handler()  # InMemoryLogHandler für Web-UI
 
     # Uvicorn- und andere Logger auch mit StructuredFormatter konfigurieren
     for logger_name in ['uvicorn', 'uvicorn.error']:
@@ -109,11 +110,14 @@ def create_app(
         for handler in logger_obj.handlers[:]:
             logger_obj.removeHandler(handler)
 
-        # Neue Handler mit StructuredFormatter hinzufügen
+        # Stdout-Handler mit StructuredFormatter
         stdout_handler = logging.StreamHandler()
         stdout_handler.setFormatter(StructuredFormatter())
         stdout_handler.addFilter(redaction_filter)
         logger_obj.addHandler(stdout_handler)
+
+        # InMemoryLogHandler für Web-UI
+        logger_obj.addHandler(memory_handler)
 
     # Uvicorn Access Logger - speziell konfigurieren
     access_logger = logging.getLogger('uvicorn.access')
@@ -124,11 +128,14 @@ def create_app(
     for handler in access_logger.handlers[:]:
         access_logger.removeHandler(handler)
 
-    # Access-Handler mit StructuredFormatter hinzufügen
+    # Stdout-Handler mit StructuredFormatter
     access_handler = logging.StreamHandler()
     access_handler.setFormatter(StructuredFormatter())
     access_handler.addFilter(redaction_filter)
     access_logger.addHandler(access_handler)
+
+    # InMemoryLogHandler für Web-UI
+    access_logger.addHandler(memory_handler)
 
     logger.info(f'Configuration loaded from {config_path}')
     logger.info(f'Device: {config.device.name}')
