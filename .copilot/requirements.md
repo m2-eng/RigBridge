@@ -109,13 +109,30 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 | ID | Status | Anforderung |
 |---|---|---|
-| CAT-01 | ⬜ Ausstehend | Das System stellt eine CAT-kompatible Schnittstelle auf einem konfigurierbaren Port bereit. |
-| CAT-02 | ⬜ Ausstehend | Die Schnittstelle ist kompatibel mit Wavelog (Hamlib-Protokoll oder Wavelog-eigenes API). |
-| CAT-03 | ⬜ Ausstehend | Der CAT-API-Key zur Authentifizierung gegenüber Wavelog ist konfigurierbar. |
-| CAT-04 | ⬜ Ausstehend | Die Wavelog-API-URL ist konfigurierbar. |
-| CAT-05 | ⬜ Ausstehend | Frequenz und Modus werden per Polling-Mechanismus automatisch an Wavelog gemeldet. |
-| CAT-06 | ⬜ Ausstehend | Die CAT-Schnittstelle kann unabhängig von der USB-Verbindung aktiviert/deaktiviert werden. |
-| CAT-07 | ⬜ Ausstehend | Verbindungsfehler zur Wavelog-Instanz werden geloggt und führen nicht zum Absturz. |
+| CAT-01 | ✅ Umgesetzt | Das System stellt eine CAT-kompatible Schnittstelle auf einem konfigurierbaren Port bereit. |
+| CAT-02 | ✅ Umgesetzt | Die Schnittstelle ist kompatibel mit Wavelog über die Radio-API (`/index.php/api/radio`). |
+| CAT-03 | ✅ Umgesetzt | Der CAT-API-Key zur Authentifizierung gegenüber Wavelog ist konfigurierbar. |
+| CAT-04 | ✅ Umgesetzt | Die Wavelog-API-URL ist konfigurierbar. |
+| CAT-05 | ✅ Umgesetzt | Frequenz und Modus werden per API-Request an Wavelog gemeldet (JSON-Payload mit `key`, `radio`, `frequency`, `mode`, `timestamp`, optional `power`). |
+| CAT-06 | ✅ Umgesetzt | Die CAT-Schnittstelle kann unabhängig von der USB-Verbindung aktiviert/deaktiviert werden. |
+| CAT-07 | ✅ Umgesetzt | Verbindungsfehler zur Wavelog-Instanz werden geloggt und führen nicht zum Absturz. |
+| CAT-08 | ✅ Umgesetzt | Das System unterstützt WaveLogGate-Integration: HTTP-Endpoint (`http://localhost:54321/{frequency}/{mode}`) für QSY-Befehle (Bandmap-Klicks). |
+| CAT-09 | ✅ Umgesetzt | Das System unterstützt WaveLogGate WebSocket (`ws://localhost:54322`) zum Empfangen von Radio-Status-Events. |
+| CAT-10 | ✅ Umgesetzt | Der Radio-Name (z.B. "ICOM IC-905") ist konfigurierbar und wird im API-Payload an Wavelog gesendet. |
+| CAT-11 | ✅ Umgesetzt | Die Station-ID ist optional konfigurierbar für Multi-Station-Setups. |
+| CAT-12 | ✅ Umgesetzt | Bridge-Modus: Radio-Status kann von WaveLogGate WebSocket empfangen und automatisch an Wavelog weitergeleitet werden. |
+| CAT-13 | ✅ Umgesetzt | Payload-Feld `power`: Optional in Wavelog-Payload enthalten; wenn kein CI-V-Befehl im YAML vorhanden, wird das Feld weggelassen (nicht als Dummy gesendet). Wird mit `power_w` Parameter von `send_radio_status()` übertragen wenn verfügbar. |
+| CAT-14 | ✅ Umgesetzt | CAT-Statusübertragung aus USB-Daten ist aktiv für Frequenz/Modus. Fallback bei unvollständigen USB-Daten: Status wird nicht versendet; geloggt als `Radio-Status unvollständig, überspringe Update`. Verhindert ungültige Wavelog-Einträge. |
+| CAT-15 | ⬜ Ausstehend | Für alle im Wavelog-Payload genutzten Felder existieren validierte CI-V-Befehlsmappings pro Gerät (YAML-abhängig). Aktuell fehlen je nach Gerät einzelne Felder (insb. `power`). |
+| CAT-16 | ✅ Umgesetzt | Bei aktivierter Wavelog Integration werden Daten zyklisch (Polling-Intervall, Standard 5s) an Wavelog gesendet sobald eine Radio-Verbindung aktiv ist. Implementiert via Background-Task `start_cat_update_task()` mit Endpoints `/cat/start`, `/cat/stop`, `/cat/send-now`. |
+
+**Hinweis zum aktuellen Payload-Stand (`/index.php/api/radio`):**
+- `key`: Umgesetzt
+- `radio`: Umgesetzt
+- `frequency`: Umgesetzt (USB/CI-V)
+- `mode`: Umgesetzt (USB/CI-V)
+- `timestamp`: Umgesetzt
+- `power`: Teilweise umgesetzt (optional, derzeit ggf. leer/Dummy wenn kein CI-V-Befehl verfügbar)
 
 ---
 
@@ -125,8 +142,8 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 |---|---|---|
 | CFG-01 | ✅ Umgesetzt | Alle Konfigurationswerte werden persistent in einer JSON-Datei (config.json) gespeichert. |
 | CFG-02 | ✅ Umgesetzt | Die Konfiguration wird beim Start automatisch geladen. |
-| CFG-03 | 🔄 In Entwicklung | API-Keys und andere Secrets werden ausschließlich über einen Secret-Provider (HashiCorp Vault) bezogen. Eine Speicherung im Klartext in config.json ist nicht erlaubt. |
-| CFG-04 | ✅ Umgesetzt | Konfigurierbare Parameter (Mindestumfang): USB-Port, Baud-Rate, Serial-Parameter, CAT-Port, Wavelog-URL, Wavelog-API-Key-Referenz, Gerätename, API-Port, Log-Level. |
+| CFG-03 | ✅ Umgesetzt | API-Keys und andere Secrets werden in config.json gespeichert. Optional können Secret-Referenzen via Secret-Provider (HashiCorp Vault) verwendet werden (Format: `path#key`). Direkter API-Key im Klartext ist erlaubt. |
+| CFG-04 | ✅ Umgesetzt | Konfigurierbare Parameter (Mindestumfang): USB-Port, Baud-Rate, Serial-Parameter, CAT-Port, Wavelog-URL, Wavelog-API-Key (direkt oder Secret-Referenz), Gerätename, API-Port, Log-Level. |
 | CFG-05 | ✅ Umgesetzt | Secrets (API-Keys) werden nicht im Klartext in Logdateien ausgegeben. |
 | CFG-07 | ✅ Umgesetzt | Die Konfigurationsdatei kann sowohl von der Applikation als auch von Benutzer bearbeitet werden. |
 | CFG-08 | ✅ Umgesetzt | Der Inhalt der Konfigurationsdatei soll in der Oberflächje angezeigt werden. |

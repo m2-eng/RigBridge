@@ -153,8 +153,8 @@ class ConfigManager {
         if (data.api_url && !this.isValidUrl(data.api_url)) {
           errors.push('Wavelog API URL must be a valid URL');
         }
-        if (data.polling_interval && (data.polling_interval < 5 || data.polling_interval > 300)) {
-          errors.push('Polling interval must be between 5 and 300 seconds');
+        if (data.polling_interval && (data.polling_interval < 1 || data.polling_interval > 300)) {
+          errors.push('Polling interval must be between 1 and 300 seconds');
         }
         break;
 

@@ -93,12 +93,12 @@ async def my_endpoint():
 - Secrets dürfen nicht in Log-Ausgaben erscheinen.
 - **Geheimnis-Referenzen (Secret References):** In der `config.json` werden Geheimnisse als Referenzen gespeichert, nicht als Klartext.
   - Format: `<provider>:<path>#<key>` (Beispiel: `vault:rigbridge/wavelog#api_key`)
-  - Feldnamen für Secret-Referenzen enden auf `_secret_ref` (Beispiel: `api_key_secret_ref`)
+  - Feldnamen fuer API-Key oder Secret-Referenzen enden auf `_or_secret_ref` (Beispiel: `api_key_or_secret_ref`)
   - Beispiel in config.json:
     ```json
     {
       "wavelog": {
-        "api_key_secret_ref": "vault:rigbridge/wavelog#api_key"
+        "api_key_or_secret_ref": "vault:rigbridge/wavelog#api_key"
       }
     }
     ```

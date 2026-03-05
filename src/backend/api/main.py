@@ -15,7 +15,13 @@ import asyncio
 
 from ..config.logger import RigBridgeLogger, StructuredFormatter
 from ..config.settings import ConfigManager, LogLevel
-from .routes import create_router, start_usb_health_check_task, stop_usb_health_check_task
+from .routes import (
+    create_router,
+    start_usb_health_check_task,
+    stop_usb_health_check_task,
+    start_cat_update_task,
+    stop_cat_update_task,
+)
 
 # Logger-Initialisierung
 logger = RigBridgeLogger.get_logger(__name__)
@@ -48,21 +54,33 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Lifespan-Handler für Startup/Shutdown Events."""
-        # Startup: Starte USB-Health-Check Background-Task
+        # Startup: Starte Background-Tasks
         try:
             asyncio.create_task(start_usb_health_check_task())
             logger.info('USB health check task started')
         except Exception as e:
             logger.error(f'Failed to start USB health check task: {e}')
+        
+        try:
+            asyncio.create_task(start_cat_update_task())
+            logger.info('CAT update task started (wenn aktiviert)')
+        except Exception as e:
+            logger.error(f'Failed to start CAT update task: {e}')
 
         yield
 
-        # Shutdown: Stoppe USB-Health-Check
+        # Shutdown: Stoppe Background-Tasks
         try:
             await stop_usb_health_check_task()
             logger.info('USB health check task stopped')
         except Exception as e:
             logger.error(f'Failed to stop USB health check task: {e}')
+        
+        try:
+            await stop_cat_update_task()
+            logger.info('CAT update task stopped')
+        except Exception as e:
+            logger.error(f'Failed to stop CAT update task: {e}')
 
     # Logger konfigurieren
     level_map = {

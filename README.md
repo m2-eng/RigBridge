@@ -95,7 +95,7 @@ Die Konfiguration wird in `config.json` gespeichert:
   "wavelog": {
     "enabled": false,
     "api_url": "https://wavelog.example.com",
-    "api_key_secret_ref": "rigbridge/wavelog#api_key",
+    "api_key_or_secret_ref": "rigbridge/wavelog#api_key",
     "polling_interval": 30
   }
 }

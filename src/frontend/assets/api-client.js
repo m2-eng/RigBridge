@@ -77,7 +77,7 @@ class ApiClient {
 
   /**
    * Lädt die aktuelle Konfiguration.
-   * Secrets werden maskiert (api_key_secret_ref: "***").
+  * Secrets werden maskiert (api_key_or_secret_ref: "***").
    * @returns {Promise<object>} Aktuelle Konfiguration
    */
   async getConfig() {
