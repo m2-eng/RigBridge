@@ -390,19 +390,19 @@ document.documentElement.style.setProperty('--color-primary', '#ff6b6b');
 **❌ NEVER:**
 ```javascript
 // WRONG: Display plaintext secrets
-const apiKey = config.wavelog.api_key_secret_ref;
+const apiKey = config.wavelog.api_key_or_secret_ref;
 console.log(apiKey);  // 🔴 Logged to console!
 ```
 
 **✅ DO:**
 ```javascript
 // RIGHT: Use displayValue() for UI
-const display = configManager.displayValue('wavelog', 'api_key_secret_ref');
+const display = configManager.displayValue('wavelog', 'api_key_or_secret_ref');
 console.log(display);  // "***" - safely masked
 
 // API-Key nur zum Speichern:
 await configManager.saveSection('wavelog', {
-  api_key_secret_ref: document.getElementById('wavelog-apikey').value
+  api_key_or_secret_ref: document.getElementById('wavelog-apikey').value
 });
 ```
 

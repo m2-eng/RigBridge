@@ -188,9 +188,9 @@
             </div>
 
             <div class="form-group">
-              <label for="wavelog-apikey">API-Key (Geheim):</label>
-              <input type="password" id="wavelog-apikey" name="api_key_secret_ref" placeholder="Wird verschlüsselt gespeichert">
-              <small>Der Schlüssel wird nie im Klartext angezeigt oder geloggt</small>
+              <label for="wavelog-apikey">API-Key:</label>
+              <input type="text" id="wavelog-apikey" name="api_key_or_secret_ref" placeholder="Direkter Key (z.B. abcd1234ef567890) oder Secret-Referenz (z.B. rigbridge/wavelog#api_key)">
+              <small>Direkter Klartext oder optionale Secret-Referenz für Vault</small>
             </div>
 
             <div class="form-group">
@@ -202,7 +202,7 @@
 
             <div class="form-group">
               <label for="wavelog-polling">Polling-Intervall (s):</label>
-              <input type="number" id="wavelog-polling" name="polling_interval" min="5" max="300" value="30">
+              <input type="number" id="wavelog-polling" name="polling_interval" min="1" max="300" value="30">
             </div>
 
             <!-- Verbindungstest -->

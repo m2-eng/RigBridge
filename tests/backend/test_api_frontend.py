@@ -2,8 +2,10 @@
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
+import httpx
 
 from src.backend.api import create_app
 
@@ -33,7 +35,7 @@ def _write_config(path: Path) -> None:
                 'wavelog': {
                     'enabled': False,
                     'api_url': 'https://api.wavelog.local',
-                    'api_key_secret_ref': 'rigbridge/wavelog#api_key',
+                    'api_key_or_secret_ref': 'rigbridge/wavelog#api_key',
                     'polling_interval': 5,
                 },
                 'secret_provider': {
@@ -235,7 +237,7 @@ def test_wavelog_with_secret_ref(tmp_path):
         'wavelog': {
             'enabled': True,  # Enabled
             'api_url': 'https://api.wavelog.local',
-            'api_key_secret_ref': 'rigbridge/wavelog#api_key',
+            'api_key_or_secret_ref': 'rigbridge/wavelog#api_key',
             'polling_interval': 5,
         },
         'secret_provider': {
@@ -264,6 +266,143 @@ def test_wavelog_with_secret_ref(tmp_path):
     # sollte success=false sein
     assert 'success' in data
     assert 'message' in data
+
+
+def test_wavelog_test_with_direct_api_key(tmp_path):
+    """Test: /api/wavelog/test akzeptiert direkten API-Key im Klartext."""
+    config_file = tmp_path / 'config.json'
+    config_data = {
+        'usb': {
+            'port': 'COM4',
+            'baud_rate': 115200,
+            'data_bits': 8,
+            'stop_bits': 1,
+            'parity': 'N',
+            'timeout': 1.0,
+            'reconnect_interval': 5,
+        },
+        'api': {
+            'host': '127.0.0.1',
+            'port': 8080,
+            'enable_https': False,
+            'cert_file': None,
+            'key_file': None,
+            'log_level': 'INFO',
+        },
+        'wavelog': {
+            'enabled': True,
+            'api_url': 'https://api.wavelog.local',
+            'api_key_or_secret_ref': 'direct_plain_api_key',  # Direkter API-Key im Klartext
+            'polling_interval': 5,
+        },
+        'secret_provider': {
+            'provider': 'vault',
+            'vault_url': 'http://127.0.0.1:8200',
+            'vault_mount': 'secret',
+            'token_file': '/run/secrets/vault_token',
+        },
+        'device': {
+            'name': 'Icom IC-905',
+            'manufacturer': 'icom',
+            'protocol_file': 'ic905',
+        },
+    }
+    config_file.write_text(json.dumps(config_data, indent=2))
+
+    app = create_app(config_path=config_file)
+    client = TestClient(app)
+
+    mocked_response = httpx.Response(
+        status_code=200,
+        json=[
+            {
+                'station_id': 1,
+                'station_profile_name': 'Home Station',
+                'station_callsign': 'DL1ABC',
+            }
+        ],
+        request=httpx.Request('GET', 'https://api.wavelog.local/index.php/api/station_info/direct_plain_api_key'),
+    )
+
+    with patch('src.backend.api.routes.httpx.AsyncClient.get', new=AsyncMock(return_value=mocked_response)):
+        response = client.get('/api/wavelog/test')
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        assert data['station_count'] == 1
+        assert 'authenticated' in data['message'].lower()
+
+
+def test_wavelog_stations_with_direct_key(tmp_path):
+    """Test: /api/wavelog/stations mit direktem API-Key im Klartext."""
+    config_file = tmp_path / 'config.json'
+    config_data = {
+        'usb': {
+            'port': 'COM4',
+            'baud_rate': 115200,
+            'data_bits': 8,
+            'stop_bits': 1,
+            'parity': 'N',
+            'timeout': 1.0,
+            'reconnect_interval': 5,
+        },
+        'api': {
+            'host': '127.0.0.1',
+            'port': 8080,
+            'enable_https': False,
+            'cert_file': None,
+            'key_file': None,
+            'log_level': 'INFO',
+        },
+        'wavelog': {
+            'enabled': True,
+            'api_url': 'https://api.wavelog.local',
+            'api_key_or_secret_ref': 'direct_plain_api_key',  # Direkter API-Key
+            'polling_interval': 5,
+        },
+        'secret_provider': {
+            'provider': 'vault',
+            'vault_url': 'http://127.0.0.1:8200',
+            'vault_mount': 'secret',
+            'token_file': '/run/secrets/vault_token',
+        },
+        'device': {
+            'name': 'Icom IC-905',
+            'manufacturer': 'icom',
+            'protocol_file': 'ic905',
+        },
+    }
+    config_file.write_text(json.dumps(config_data, indent=2))
+
+    app = create_app(config_path=config_file)
+    client = TestClient(app)
+
+    mocked_response = httpx.Response(
+        status_code=200,
+        json=[
+            {
+                'station_id': 1,
+                'station_profile_name': 'Home Station',
+                'station_callsign': 'DL1ABC',
+            },
+            {
+                'station_id': 2,
+                'station_profile_name': 'Portable',
+                'station_callsign': 'DL1ABC/P',
+            },
+        ],
+        request=httpx.Request('GET', 'https://api.wavelog.local/index.php/api/station_info/direct_plain_api_key'),
+    )
+
+    with patch('src.backend.api.routes.httpx.AsyncClient.get', new=AsyncMock(return_value=mocked_response)):
+        response = client.get('/api/wavelog/stations')
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload['stations']) == 2
+        assert payload['stations'][0]['name'] == 'Home Station'
+        assert payload['stations'][0]['callsign'] == 'DL1ABC'
 
 
 def test_devices_endpoint_structure(tmp_path):

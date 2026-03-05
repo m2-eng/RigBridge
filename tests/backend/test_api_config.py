@@ -32,7 +32,7 @@ def _write_config(path: Path) -> None:
                 'wavelog': {
                     'enabled': False,
                     'api_url': 'https://api.wavelog.local',
-                    'api_key_secret_ref': 'rigbridge/wavelog#api_key',
+                    'api_key_or_secret_ref': 'rigbridge/wavelog#api_key',
                     'polling_interval': 5,
                 },
                 'secret_provider': {
@@ -64,7 +64,7 @@ def test_get_config_masks_secret_ref(tmp_path: Path):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload['wavelog']['api_key_secret_ref'] == '***'
+    assert payload['wavelog']['api_key_or_secret_ref'] == '***'
 
 
 def test_put_config_persists_changes(tmp_path: Path):
@@ -78,7 +78,7 @@ def test_put_config_persists_changes(tmp_path: Path):
         '/api/config',
         json={
             'api': {'port': 8090, 'log_level': 'DEBUG'},
-            'wavelog': {'api_key_secret_ref': 'rigbridge/wavelog#new_api_key'},
+            'wavelog': {'api_key_or_secret_ref': 'rigbridge/wavelog#new_api_key'},
         },
     )
 
@@ -88,7 +88,7 @@ def test_put_config_persists_changes(tmp_path: Path):
     updated = json.loads(config_path.read_text(encoding='utf-8'))
     assert updated['api']['port'] == 8090
     assert updated['api']['log_level'] == 'DEBUG'
-    assert updated['wavelog']['api_key_secret_ref'] == 'rigbridge/wavelog#new_api_key'
+    assert updated['wavelog']['api_key_or_secret_ref'] == 'rigbridge/wavelog#new_api_key'
 
 
 def test_put_config_invalid_log_level_returns_error_contract(tmp_path: Path):

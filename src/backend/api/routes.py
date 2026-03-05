@@ -8,6 +8,7 @@ Keine Race Conditions zwischen Health-Check und API-Befehlen.
 """
 
 import asyncio
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from typing import Any, Optional, Dict, List
@@ -20,6 +21,7 @@ from ..config.settings import ConfigManager, LogLevel
 from ..config.secret_provider import create_secret_provider, SecretProviderError
 from ..civ.executor import CIVCommandExecutor, CommandResult
 from ..usb.connection import USBConnection, USBStatus
+from ..cat.cat_client import WavelogCatClient
 from src import __version__
 
 logger = RigBridgeLogger.get_logger(__name__)
@@ -58,6 +60,49 @@ def _get_or_create_executor() -> CIVCommandExecutor:
             raise
 
     return _global_executor_cache[cache_key]
+
+
+def _resolve_wavelog_api_key(config) -> str:
+    """
+    Löst den Wavelog API-Key auf.
+
+    Unterstützte Varianten für `wavelog.api_key_or_secret_ref`:
+    - Direkter API-Key im Klartext (z.B. `abcd1234ef567890`)
+    - Secret-Referenz via Vault (Format: `path#key`)
+
+    Hinweis: Direkter Klartext-API-Key wird gespeichert (CFG-03).
+    """
+    api_key_ref = (config.wavelog.api_key_or_secret_ref or '').strip()
+    if not api_key_ref:
+        raise SecretProviderError('Wavelog API-Key nicht konfiguriert')
+
+    # Wenn # enthalten → Secret-Referenz via Vault
+    if '#' in api_key_ref:
+        provider = create_secret_provider(config)
+        return provider.get_secret(api_key_ref)
+
+    # Ansonsten: direkter API-Key im Klartext
+    return api_key_ref
+
+
+async def _fetch_wavelog_station_info(config, api_key: str) -> List[Dict[str, Any]]:
+    """Lädt Stationen aus WaveLog über den station_info API-Endpunkt."""
+    endpoint = f'index.php/api/station_info/{api_key}'
+    url = f"{config.wavelog.api_url.rstrip('/')}/{endpoint}"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(url, headers={'Accept': 'application/json'})
+        response.raise_for_status()
+        payload = response.json()
+
+    if isinstance(payload, dict) and payload.get('status') == 'failed':
+        reason = payload.get('reason', 'unknown reason')
+        raise ValueError(f'WaveLog station_info failed: {reason}')
+
+    if not isinstance(payload, list):
+        raise ValueError('WaveLog station_info returned unexpected payload format')
+
+    return payload
 
 
 # ============================================================================
@@ -172,6 +217,10 @@ class StatusResponse(BaseModel):
     device_name: str
     api_version: str
     features: List[str]
+    cat_status: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description='CAT-Client-Status (WaveLog-Integration)'
+    )
 
 
 class ConfigResponse(BaseModel):
@@ -225,8 +274,12 @@ class APIConfigUpdate(BaseModel):
 class WavelogConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     api_url: Optional[str] = None
-    api_key_secret_ref: Optional[str] = None
+    api_key_or_secret_ref: Optional[str] = None
     polling_interval: Optional[int] = None
+    radio_name: Optional[str] = None
+    station_id: Optional[str] = None
+    wavelog_gate_http_base: Optional[str] = None
+    wavelog_gate_ws_url: Optional[str] = None
 
 
 class SecretProviderConfigUpdate(BaseModel):
@@ -260,6 +313,14 @@ _health_check_state = {
     'running': False,
     'usb_status': USBStatus.DISCONNECTED,
     'last_check': None,
+}
+
+# Globaler State für CAT-Client und Background-Task
+_cat_client_state = {
+    'client': None,
+    'task': None,
+    'running': False,
+    'last_update': None,
 }
 
 
@@ -368,6 +429,217 @@ def get_usb_status() -> USBStatus:
 
 
 # ============================================================================
+# CAT Client - WaveLog Integration
+# ============================================================================
+
+
+async def _get_radio_status() -> Dict[str, Any]:
+    """
+    Liest aktuellen Radio-Status (Frequenz, Mode, Power).
+
+    Nutzt verfügbare USB-Befehle. Für fehlende Befehle werden Dummy-Werte verwendet.
+
+    Returns:
+        Dict mit frequency_hz, mode, power_w (oder None wenn nicht verfügbar)
+    """
+    try:
+        executor = _get_or_create_executor()
+
+        # Frequenz auslesen
+        frequency_hz = None
+        freq_result = await executor.execute_command('read_operating_frequency')
+        if freq_result.success and freq_result.data:
+            frequency_hz = freq_result.data.get('frequency')
+
+        # Modus auslesen
+        mode = None
+        mode_result = await executor.execute_command('read_operating_mode')
+        if mode_result.success and mode_result.data:
+            mode = mode_result.data.get('mode')
+
+        # Power auslesen (wenn Befehl verfügbar)
+        # Hinweis: Viele Geräte haben keinen Befehl zum Auslesen der aktuellen Sendeleistung
+        # Verwende Dummy-Wert oder lasse None
+        power_w = None
+        # TODO: Implementiere read_tx_power wenn verfügbar in YAML
+        # Für jetzt: Dummy-Wert basierend auf Config oder None
+
+        return {
+            'frequency_hz': frequency_hz,
+            'mode': mode,
+            'power_w': power_w,
+        }
+
+    except Exception as e:
+        logger.debug(f'Fehler beim Auslesen des Radio-Status: {e}')
+        return {
+            'frequency_hz': None,
+            'mode': None,
+            'power_w': None,
+        }
+
+
+async def _get_or_create_cat_client() -> Optional[WavelogCatClient]:
+    """
+    Erstellt oder gibt existierenden CAT-Client zurück.
+
+    Returns:
+        WavelogCatClient oder None wenn nicht aktiviert
+    """
+    config = ConfigManager.get()
+
+    # Prüfe ob WaveLog aktiviert ist
+    if not config.wavelog.enabled:
+        return None
+
+    # Erstelle Client wenn noch nicht vorhanden
+    if _cat_client_state['client'] is None:
+        try:
+            # Prüfe ob API-Key konfiguriert ist
+            if not config.wavelog.api_key_or_secret_ref:
+                logger.warning('Wavelog API-Key ist nicht konfiguriert')
+                return None
+
+            # API-Key auflösen (Secret-Ref oder direkter Key)
+            try:
+                api_key = _resolve_wavelog_api_key(config)
+            except SecretProviderError as e:
+                logger.warning(f'Konnte API-Key nicht laden: {e}')
+                return None
+
+            # Client erstellen (Context Manager wird NICHT verwendet im Background-Task)
+            client = WavelogCatClient(config.wavelog, api_key=api_key)
+
+            # HTTP Client manuell initialisieren
+            await client.__aenter__()
+
+            _cat_client_state['client'] = client
+            logger.info('WaveLog CAT Client erstellt')
+
+        except Exception as e:
+            logger.error(f'Fehler beim Erstellen des CAT-Clients: {e}')
+            return None
+
+    return _cat_client_state['client']
+
+
+async def start_cat_update_task(update_interval: Optional[int] = None):
+    """
+    Startet zyklische Radio-Status-Updates zu WaveLog im Hintergrund.
+
+    Args:
+        update_interval: Update-Intervall in Sekunden (aus Config wenn None)
+    """
+    config = ConfigManager.get()
+
+    # Prüfe ob aktiviert
+    if not config.wavelog.enabled:
+        logger.info('WaveLog CAT-Integration ist deaktiviert')
+        return
+
+    if _cat_client_state['running']:
+        logger.warning('CAT update task already running')
+        return
+
+    interval = update_interval or config.wavelog.polling_interval
+    _cat_client_state['running'] = True
+    logger.info(f'WaveLog CAT update task gestartet (Intervall: {interval}s)')
+
+    async def cat_update_loop():
+        """Endlosschleife für zyklische Status-Updates."""
+        consecutive_failures = 0
+
+        while _cat_client_state['running']:
+            try:
+                # Client initialisieren wenn nötig
+                client = await _get_or_create_cat_client()
+
+                if client:
+                    # Radio-Status auslesen
+                    status = await _get_radio_status()
+
+                    # An WaveLog senden wenn Daten vorhanden
+                    if status['frequency_hz'] and status['mode']:
+                        success = await client.send_radio_status(
+                            frequency_hz=status['frequency_hz'],
+                            mode=status['mode'],
+                            power_w=status['power_w'],
+                        )
+
+                        if success:
+                            consecutive_failures = 0
+                            logger.debug(
+                                f'Radio-Status an WaveLog gesendet: '
+                                f'{status["frequency_hz"]} Hz, {status["mode"]}'
+                            )
+                            _cat_client_state['last_update'] = asyncio.get_event_loop().time()
+                        else:
+                            consecutive_failures += 1
+                            if consecutive_failures % 6 == 1:
+                                logger.warning(
+                                    f'WaveLog-Update fehlgeschlagen '
+                                    f'({consecutive_failures}x)'
+                                )
+                    else:
+                        logger.debug('Radio-Status unvollständig, überspringe Update')
+
+            except Exception as e:
+                logger.error(f'Fehler im CAT-Update-Loop: {e}')
+                consecutive_failures += 1
+
+            # Warte bis zum nächsten Update
+            await asyncio.sleep(interval)
+
+    # Starte Task
+    task = asyncio.create_task(cat_update_loop())
+    _cat_client_state['task'] = task
+
+
+async def stop_cat_update_task():
+    """Stoppt zyklische CAT-Updates zu WaveLog."""
+    _cat_client_state['running'] = False
+
+    # Task beenden
+    if _cat_client_state['task']:
+        try:
+            _cat_client_state['task'].cancel()
+            await _cat_client_state['task']
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f'Fehler beim Stoppen des CAT-Tasks: {e}')
+        finally:
+            _cat_client_state['task'] = None
+
+    # Client schließen
+    if _cat_client_state['client']:
+        try:
+            await _cat_client_state['client'].close()
+        except Exception as e:
+            logger.error(f'Fehler beim Schließen des CAT-Clients: {e}')
+        finally:
+            _cat_client_state['client'] = None
+
+    logger.info('WaveLog CAT update task gestoppt')
+
+
+def get_cat_status() -> Dict[str, Any]:
+    """
+    Gibt aktuellen CAT-Client-Status zurück.
+
+    Returns:
+        Dict mit enabled, running, last_update
+    """
+    config = ConfigManager.get()
+    return {
+        'enabled': config.wavelog.enabled,
+        'running': _cat_client_state['running'],
+        'last_update': _cat_client_state['last_update'],
+        'client_connected': _cat_client_state['client'] is not None,
+    }
+
+
+# ============================================================================
 # Router und Endpunkte
 # ============================================================================
 
@@ -399,10 +671,9 @@ def create_router() -> APIRouter:
         # Nutze zyklisch geprüften USB-Status (vom Health-Check)
         usb_status = get_usb_status()
 
-        if config.wavelog.enabled and config.wavelog.api_key_secret_ref:
+        if config.wavelog.enabled and config.wavelog.api_key_or_secret_ref:
             try:
-                provider = create_secret_provider(config)
-                provider.get_secret(config.wavelog.api_key_secret_ref)
+                _resolve_wavelog_api_key(config)
             except SecretProviderError as exc:
                 degraded_mode = True
                 secret_provider_available = False
@@ -416,6 +687,7 @@ def create_router() -> APIRouter:
             device_name=config.device.name,
             api_version=__version__,
             features=['set_frequency', 'set_mode', 'read_s_meter'],
+            cat_status=get_cat_status(),
         )
 
     @router.get(
@@ -439,8 +711,8 @@ def create_router() -> APIRouter:
             'device': asdict(config.device),
         }
 
-        if response['wavelog'].get('api_key_secret_ref'):
-            response['wavelog']['api_key_secret_ref'] = '***'
+        if response['wavelog'].get('api_key_or_secret_ref'):
+            response['wavelog']['api_key_or_secret_ref'] = '***'
 
         return response
 
@@ -458,6 +730,9 @@ def create_router() -> APIRouter:
         if 'usb' in payload:
             for key, value in payload['usb'].items():
                 setattr(config.usb, key, value)
+            # Invalidiere gecachten Executor damit er mit neuen USB-Settings neu erstellt wird
+            _global_executor_cache.clear()
+            logger.debug('CIV Executor Cache invalidiert (USB-Config aktualisiert)')
 
         if 'api' in payload:
             api_values = payload['api']
@@ -473,6 +748,15 @@ def create_router() -> APIRouter:
         if 'wavelog' in payload:
             for key, value in payload['wavelog'].items():
                 setattr(config.wavelog, key, value)
+            # Invalidiere gecachten CAT-Client damit er mit neuen Settings neu erstellt wird
+            _cat_client_state['client'] = None
+            logger.debug('WaveLog CAT-Client Cache invalidiert (Config aktualisiert)')
+
+            # Starte CAT-Task mit neuer Konfiguration neu
+            await stop_cat_update_task()
+            if config.wavelog.enabled:
+                logger.info('Starte CAT-Update-Task mit aktualisierter Konfiguration neu...')
+                await start_cat_update_task()
 
         if 'secret_provider' in payload:
             for key, value in payload['secret_provider'].items():
@@ -787,31 +1071,37 @@ def create_router() -> APIRouter:
                     message='Wavelog is not enabled in configuration',
                 )
 
-            # Prüfe ob Secret-Ref vorhanden ist
-            if not config.wavelog.api_key_secret_ref:
+            # Prüfe ob API-Key-Referenz/Fallback vorhanden ist
+            if not config.wavelog.api_key_or_secret_ref:
                 return WavelogTestResponse(
                     success=False,
-                    message='Wavelog API key secret reference not configured',
+                    message='Wavelog API key reference not configured',
                 )
 
-            # Versuche Secret zu laden
+            # Versuche API-Key aufzulösen (Secret-Ref oder Direktwert)
             try:
-                provider = create_secret_provider(config)
-                provider.get_secret(config.wavelog.api_key_secret_ref)
+                api_key = _resolve_wavelog_api_key(config)
             except SecretProviderError as e:
                 return WavelogTestResponse(
                     success=False,
                     message=f'Secret provider error: {str(e)}',
                 )
 
-            # Vereinfachter Test: nur Erreichbarkeit prüfen
-            # TODO: Echter Wavelog-API-Call wenn Integration vorhanden
-            logger.info('Wavelog connection test completed (mock)')
-            return WavelogTestResponse(
-                success=True,
-                message='Wavelog is reachable and authenticated',
-                station_count=10,
-            )
+            try:
+                stations_raw = await _fetch_wavelog_station_info(config, api_key)
+                logger.info(f'Wavelog connection test successful ({len(stations_raw)} stations)')
+                return WavelogTestResponse(
+                    success=True,
+                    message='Wavelog is reachable and authenticated',
+                    station_count=len(stations_raw),
+                )
+            except (httpx.HTTPError, ValueError) as e:
+                logger.warning(f'Wavelog connection test failed: {e}')
+                return WavelogTestResponse(
+                    success=False,
+                    message=f'Wavelog request failed: {str(e)}',
+                    station_count=0,
+                )
 
         except Exception as e:
             logger.error(f'Wavelog test failed: {e}')
@@ -838,16 +1128,24 @@ def create_router() -> APIRouter:
             if not config.wavelog.enabled:
                 return WavelogStationsResponse(stations=[])
 
-            # Mock-Daten für UI-Test
-            # TODO: Echter Wavelog-API-Call wenn Integration vorhanden
-            mock_stations = [
-                WavelogStation(id=1, name='Home Station', callsign='W5XYZ'),
-                WavelogStation(id=2, name='Mobile', callsign='W5XYZ/M'),
-                WavelogStation(id=3, name='Portable', callsign='W5XYZ/P'),
-            ]
+            api_key = _resolve_wavelog_api_key(config)
+            stations_raw = await _fetch_wavelog_station_info(config, api_key)
 
-            logger.info(f'Retrieved {len(mock_stations)} stations from Wavelog (mock)')
-            return WavelogStationsResponse(stations=mock_stations)
+            stations: List[WavelogStation] = []
+            for entry in stations_raw:
+                try:
+                    station_id = int(entry.get('station_id'))
+                    name = str(entry.get('station_profile_name') or entry.get('name') or '').strip()
+                    callsign = str(entry.get('station_callsign') or entry.get('callsign') or '').strip()
+                    if station_id and name and callsign:
+                        stations.append(
+                            WavelogStation(id=station_id, name=name, callsign=callsign)
+                        )
+                except (TypeError, ValueError):
+                    continue
+
+            logger.info(f'Retrieved {len(stations)} stations from Wavelog')
+            return WavelogStationsResponse(stations=stations)
 
         except Exception as e:
             logger.error(f'Get Wavelog stations failed: {e}')
@@ -894,6 +1192,92 @@ def create_router() -> APIRouter:
         except Exception as e:
             logger.error(f'Device list failed: {e}')
             return DeviceListResponse(devices=[])
+
+    # ========================================================================
+    # CAT CLIENT CONTROL ENDPOINTS
+    # ========================================================================
+
+    @router.post(
+        '/cat/start',
+        tags=['CAT'],
+        summary='Startet CAT-Status-Updates zu WaveLog',
+    )
+    async def start_cat():
+        """Startet den CAT-Background-Task für automatische Radio-Status-Updates."""
+        try:
+            await start_cat_update_task()
+            return {'success': True, 'message': 'CAT update task started'}
+        except Exception as e:
+            logger.error(f'Failed to start CAT task: {e}')
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        '/cat/stop',
+        tags=['CAT'],
+        summary='Stoppt CAT-Status-Updates zu WaveLog',
+    )
+    async def stop_cat():
+        """Stoppt den CAT-Background-Task."""
+        try:
+            await stop_cat_update_task()
+            return {'success': True, 'message': 'CAT update task stopped'}
+        except Exception as e:
+            logger.error(f'Failed to stop CAT task: {e}')
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        '/cat/status',
+        tags=['CAT'],
+        summary='CAT-Client-Status abrufen',
+    )
+    async def get_cat_client_status():
+        """Gibt den aktuellen Status des CAT-Clients zurück."""
+        return get_cat_status()
+
+    @router.post(
+        '/cat/send-now',
+        tags=['CAT'],
+        summary='Sendet sofort aktuellen Radio-Status an WaveLog',
+    )
+    async def send_cat_now():
+        """Sendet einmalig den aktuellen Radio-Status, unabhängig vom Background-Task."""
+        try:
+            config = ConfigManager.get()
+
+            if not config.wavelog.enabled:
+                return {'success': False, 'message': 'WaveLog is not enabled'}
+
+            # Client holen/erstellen
+            client = await _get_or_create_cat_client()
+            if not client:
+                return {'success': False, 'message': 'Failed to create CAT client'}
+
+            # Status auslesen
+            status = await _get_radio_status()
+
+            if not status['frequency_hz'] or not status['mode']:
+                return {
+                    'success': False,
+                    'message': 'Radio status incomplete',
+                    'status': status,
+                }
+
+            # An WaveLog senden
+            success = await client.send_radio_status(
+                frequency_hz=status['frequency_hz'],
+                mode=status['mode'],
+                power_w=status['power_w'],
+            )
+
+            return {
+                'success': success,
+                'message': 'Status sent' if success else 'Failed to send status',
+                'status': status,
+            }
+
+        except Exception as e:
+            logger.error(f'Failed to send status: {e}')
+            raise HTTPException(status_code=500, detail=str(e))
 
     return router
 

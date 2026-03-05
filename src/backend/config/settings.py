@@ -48,8 +48,12 @@ class WavelogConfig:
     """Wavelog CAT-Integrationen."""
     enabled: bool = False
     api_url: str = 'https://api.wavelog.local'
-    api_key_secret_ref: str = ''
+    api_key_or_secret_ref: str = ''
     polling_interval: int = 5
+    radio_name: str = 'ICOM IC-905'
+    station_id: Optional[str] = None
+    wavelog_gate_http_base: str = 'http://localhost:54321'
+    wavelog_gate_ws_url: str = 'ws://localhost:54322'
 
 
 @dataclass

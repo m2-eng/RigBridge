@@ -341,13 +341,13 @@ Für Netzwerk-Zugriff:
 ### Secrets
 
 Secrets (z.B. API-Keys) werden **nicht** in `config.json` gespeichert.
-Stattdessen wird in `config.json` nur eine Secret-Referenz (`api_key_secret_ref`) hinterlegt,
+Stattdessen wird in `config.json` eine API-Key-Angabe (`api_key_or_secret_ref`) hinterlegt,
 die zur Laufzeit über den konfigurierten Secret-Provider (z.B. Vault) aufgelöst wird.
 
 ```json
 {
   "wavelog": {
-    "api_key_secret_ref": "rigbridge/wavelog#api_key"
+    "api_key_or_secret_ref": "rigbridge/wavelog#api_key"
   }
 }
 ```

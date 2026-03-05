@@ -445,7 +445,7 @@ async function submitWavelogConfig() {
     const data = {
       enabled,
       api_url: document.getElementById('wavelog-url').value || '',
-      api_key_secret_ref: document.getElementById('wavelog-apikey').value || '',
+      api_key_or_secret_ref: document.getElementById('wavelog-apikey').value || '',
       polling_interval: parseInt(document.getElementById('wavelog-polling').value) || 30,
     };
 
@@ -469,9 +469,29 @@ async function submitWavelogConfig() {
 async function testWavelogConnection() {
   try {
     const statusEl = document.getElementById('wavelog-test-status');
-    statusEl.textContent = 'Testing...';
+    statusEl.textContent = 'Speichern und Verbindung wird getestet...';
     statusEl.className = 'status-line info';
 
+    // Speichere zuerst die aktuelle Config
+    const enabled = document.getElementById('wavelog-enabled').checked;
+    const data = {
+      enabled,
+      api_url: document.getElementById('wavelog-url').value || '',
+      api_key_or_secret_ref: document.getElementById('wavelog-apikey').value || '',
+      polling_interval: parseInt(document.getElementById('wavelog-polling').value) || 30,
+    };
+
+    // Validiere dass Werte vorhanden sind
+    if (!data.api_url || !data.api_key_or_secret_ref) {
+      statusEl.textContent = '✗ Connection failed: Wavelog URL and API Key required';
+      statusEl.className = 'status-line error';
+      return;
+    }
+
+    // Speichere Config
+    await configManager.saveSection('wavelog', data, { validateBeforeSave: false });
+
+    // Jetzt teste die Verbindung
     const result = await api.testWavelogConnection();
 
     if (result.success) {
