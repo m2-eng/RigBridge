@@ -372,6 +372,137 @@ input[type="radio"] {
 }
 
 /* ============================================================================
+   LOGS VIEWER
+   ============================================================================ */
+
+.logs-controls {
+  display: grid;
+  grid-template-columns: auto auto auto auto;
+  gap: var(--spacing-lg);
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.logs-controls-group {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  white-space: nowrap;
+}
+
+.logs-controls button,
+.logs-controls input,
+.logs-controls select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+}
+
+.logs-controls input,
+.logs-controls select {
+  min-width: 150px;
+}
+
+.logs-controls input[type="number"] {
+  min-width: 80px;
+}
+
+#logs-container {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  max-height: 800px;
+  height: 800px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+}
+
+.log-entry {
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+  margin-right: var(--spacing-md);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-entry.log-level-debug {
+  color: #9370db; /* Purple */
+}
+
+.log-entry.log-level-info {
+  color: #4caf50; /* Green */
+}
+
+.log-entry.log-level-warning {
+  color: #ff9800; /* Orange */
+}
+
+.log-entry.log-level-error {
+  color: #f44336; /* Red */
+}
+
+.log-entry.log-level-critical {
+  color: #b71c1c; /* Dark Red */
+  font-weight: bold;
+}
+
+.log-entry.error {
+  color: var(--color-danger);
+  padding: var(--spacing-md);
+  background-color: rgba(220, 53, 69, 0.1);
+  border-left: 3px solid var(--color-danger);
+}
+
+.log-entry.info {
+  color: var(--color-info);
+  padding: var(--spacing-md);
+  background-color: rgba(23, 162, 184, 0.1);
+  border-left: 3px solid var(--color-info);
+}
+
+.log-time {
+  color: #666;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.log-level {
+  min-width: 80px;
+  flex-shrink: 0;
+  font-weight: bold;
+}
+
+.log-module {
+  min-width: 150px;
+  flex-shrink: 0;
+  color: #aaa;
+}
+
+.log-message {
+  flex: 1;
+  word-break: break-word;
+}
+
+/* ============================================================================
    RESPONSIVE
    ============================================================================ */
 
@@ -393,5 +524,24 @@ input[type="radio"] {
 
   .info-box {
     padding: var(--spacing-md);
+  }
+
+  .logs-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .logs-controls-group {
+    width: 100%;
+  }
+
+  .logs-controls button,
+  .logs-controls input,
+  .logs-controls select {
+    width: 100%;
+  }
+
+  #logs-container {
+    max-height: 500px;
+    height: 500px;
   }
 }

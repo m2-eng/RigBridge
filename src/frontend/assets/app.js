@@ -298,6 +298,51 @@ function setupFormHandlers() {
       await updateRigStatus();
     });
   }
+
+  // LOGS Tab - Event Listener
+  const logsRefreshBtn = document.getElementById('logs-refresh-btn');
+  if (logsRefreshBtn) {
+    logsRefreshBtn.addEventListener('click', async () => {
+      await refreshLogs();
+    });
+  }
+
+  const logsClearBtn = document.getElementById('logs-clear-btn');
+  if (logsClearBtn) {
+    logsClearBtn.addEventListener('click', () => {
+      clearLogs();
+    });
+  }
+
+  const logsAutoRefresh = document.getElementById('logs-auto-refresh');
+  if (logsAutoRefresh) {
+    logsAutoRefresh.addEventListener('change', (e) => {
+      toggleAutoRefresh(e.target.checked);
+    });
+  }
+
+  const logsFilterLevel = document.getElementById('logs-filter-level');
+  if (logsFilterLevel) {
+    logsFilterLevel.addEventListener('change', (e) => {
+      filterLogs(e.target.value);
+    });
+  }
+
+  const logsLimitInput = document.getElementById('logs-limit');
+  if (logsLimitInput) {
+    logsLimitInput.addEventListener('change', async () => {
+      await refreshLogs();
+    });
+  }
+
+  // Initialer Load der Logs beim Seitenload
+  setTimeout(() => {
+    const logsTab = document.getElementById('logs-tab');
+    if (logsTab && !logsTab.innerHTML.includes('No logs')) {
+      // Lade nur Logs, wenn der Tab noch leer ist
+      loadLogs(100).catch(console.error);
+    }
+  }, 1000);
 }
 
 // ============================================================================
@@ -324,6 +369,13 @@ async function submitUSBConfig() {
     }
 
     await configManager.saveSection('usb', data, { validateBeforeSave: false });
+
+    // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren
+    await configManager.loadConfig();
+
+    // Aktualisiere die Formulare mit den neuesten Werten
+    await populateFormFields();
+
     showMessage('usb-message', 'USB configuration saved successfully!', 'success');
   } catch (error) {
     console.error('Failed to save USB config:', error);
@@ -393,6 +445,13 @@ async function submitDeviceConfig() {
 
     const deviceData = JSON.parse(select.value);
     await configManager.saveSection('device', deviceData);
+
+    // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren
+    await configManager.loadConfig();
+
+    // Aktualisiere die Formulare mit den neuesten Werten
+    await populateFormFields();
+
     showMessage('device-message', 'Device configuration saved successfully!', 'success');
   } catch (error) {
     console.error('Failed to save device config:', error);
@@ -420,6 +479,13 @@ async function submitAPIConfig() {
     }
 
     await configManager.saveSection('api', data, { validateBeforeSave: false });
+
+    // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren
+    await configManager.loadConfig();
+
+    // Aktualisiere die Formulare mit den neuesten Werten
+    await populateFormFields();
+
     showMessage('api-message', 'API configuration saved successfully!', 'success');
   } catch (error) {
     console.error('Failed to save API config:', error);
@@ -459,6 +525,13 @@ async function submitWavelogConfig() {
     }
 
     await configManager.saveSection('wavelog', data, { validateBeforeSave: false });
+
+    // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren
+    await configManager.loadConfig();
+
+    // Aktualisiere die Formulare mit den neuesten Werten
+    await populateFormFields();
+
     showMessage('wavelog-message', 'Wavelog configuration saved successfully!', 'success');
   } catch (error) {
     console.error('Failed to save Wavelog config:', error);
@@ -579,6 +652,114 @@ async function updateRigStatus() {
     console.info('Rig status updated');
   } catch (error) {
     console.error('Failed to update rig status:', error);
+  }
+}
+
+// ============================================================================
+// LOGS TAB
+// ============================================================================
+
+let logsAutoRefreshInterval = null;
+
+function _getLimit() {
+  return Math.max(1, parseInt(document.getElementById('logs-limit')?.value || 100));
+}
+
+function _getLevelFilter() {
+  return (document.getElementById('logs-filter-level')?.value || '').trim().toLowerCase();
+}
+
+/**
+ * Holt die letzten `limit` Einträge direkt vom API (kein Browser-Cache)
+ * und rendert sie sofort. Sortierung und Filterung passieren serverseitig.
+ */
+async function loadLogs(limit = 100) {
+  const logsContainer = document.getElementById('logs-container');
+  if (!logsContainer) return;
+
+  logsContainer.innerHTML = '<div class="log-entry info">Lade Logs...</div>';
+
+  try {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      newest_first: 'true',
+    });
+    const levelFilter = _getLevelFilter();
+    if (levelFilter && levelFilter !== 'all') {
+      params.set('level', levelFilter.toUpperCase());
+    }
+
+    // cache: 'no-store' verhindert, dass der Browser eine veraltete Antwort liefert
+    const response = await fetch(`/api/logs?${params.toString()}`, { cache: 'no-store' });
+    if (!response.ok) {
+      logsContainer.innerHTML = '<div class="log-entry error">Fehler beim Laden der Logs: ' + response.status + '</div>';
+      return;
+    }
+    const data = await response.json();
+    _renderLogs(data.logs || [], logsContainer);
+  } catch (error) {
+    console.error('Failed to load logs:', error);
+    logsContainer.innerHTML = `<div class="log-entry error">Fehler: ${error.message}</div>`;
+    return;
+  }
+}
+
+/** Rendert serverseitig gefilterte/sortierte Logs. */
+function _renderLogs(entries, container) {
+  const logsContainer = container || document.getElementById('logs-container');
+  if (!logsContainer) return;
+
+  if (entries.length === 0) {
+    logsContainer.innerHTML = '<div class="log-entry info">Keine Logs verfügbar</div>';
+    return;
+  }
+
+  let html = '';
+  for (const log of entries) {
+    const timeString = log.timestamp || 'N/A';
+    const levelLower = (log.level || 'INFO').toLowerCase();
+    html += `<div class="log-entry log-level-${levelLower}">` +
+      `<span class="log-time">[${timeString}]</span> ` +
+      `<span class="log-level">[${log.level}]</span> ` +
+      `<span class="log-module">[${log.name || 'ROOT'}]</span> ` +
+      `<span class="log-message">${escapeHtml(log.message)}</span>` +
+      `</div>`;
+  }
+
+  logsContainer.innerHTML = html;
+  logsContainer.scrollTop = 0;
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, m =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
+}
+
+async function refreshLogs() {
+  await loadLogs(_getLimit());
+}
+
+function clearLogs() {
+  const logsContainer = document.getElementById('logs-container');
+  if (logsContainer) {
+    logsContainer.innerHTML = '<div class="log-entry info">Logs gelöscht.</div>';
+  }
+}
+
+function filterLogs() {
+  refreshLogs().catch(console.error);
+}
+
+function toggleAutoRefresh(enabled) {
+  if (enabled) {
+    if (!logsAutoRefreshInterval) {
+      logsAutoRefreshInterval = setInterval(refreshLogs, 2000);
+    }
+  } else {
+    if (logsAutoRefreshInterval) {
+      clearInterval(logsAutoRefreshInterval);
+      logsAutoRefreshInterval = null;
+    }
   }
 }
 

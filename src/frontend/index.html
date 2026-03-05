@@ -42,6 +42,7 @@
       <button class="nav-tab" data-tab="device">Gerätewahl</button>
       <button class="nav-tab" data-tab="api">API-Server</button>
       <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
+      <button class="nav-tab" data-tab="logs">Logs</button>
       <button class="nav-tab" data-tab="info">Informationen</button>
     </nav>
 
@@ -215,6 +216,39 @@
           <button type="submit" class="btn-primary">Speichern</button>
           <span id="wavelog-message" class="form-message"></span>
         </form>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="logs-tab" class="tab-content">
+        <h2>System-Logs</h2>
+        <div class="logs-controls">
+          <div class="logs-controls-group">
+            <button type="button" id="logs-refresh-btn" class="btn-secondary">🔄 Aktualisieren</button>
+            <button type="button" id="logs-clear-btn" class="btn-secondary">🗑️ Puffer leeren</button>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-auto-refresh">Auto-Refresh:
+              <input type="checkbox" id="logs-auto-refresh">
+            </label>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-limit">Limit:
+              <input type="number" id="logs-limit" value="100" min="10" max="1000">
+            </label>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-filter-level">Filter:
+              <select id="logs-filter-level">
+                <option value="">Alle Level</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="logs-container" class="logs-list"></div>
       </div>
 
       <!-- Info Tab -->
