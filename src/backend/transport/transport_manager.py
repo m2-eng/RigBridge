@@ -14,7 +14,8 @@ import asyncio
 from typing import Optional, Any, Dict
 from enum import Enum
 
-from .connection import USBConnection, SerialFrameData
+from .usb_connection import USBConnection
+from .base_transport import FrameData
 from ..config.logger import RigBridgeLogger
 
 logger = RigBridgeLogger.get_logger(__name__)
@@ -105,7 +106,7 @@ class TransportManager:
 
     async def send_frame(
         self,
-        frame_data: SerialFrameData,
+        frame_data: FrameData,
         operation_name: str = "send",
     ) -> bool:
         """
@@ -140,7 +141,7 @@ class TransportManager:
         self,
         timeout: float = 0.7,
         operation_name: str = "read",
-    ) -> Optional[SerialFrameData]:
+    ) -> Optional[FrameData]:
         """
         Liest eine Antwort von der Ressource mit Lock-Schutz.
 
@@ -149,7 +150,7 @@ class TransportManager:
             operation_name: Name der Operation (für Logging)
 
         Returns:
-            SerialFrameData bei Erfolg, None bei Timeout
+            FrameData bei Erfolg, None bei Timeout
         """
         if not self.usb_connection:
             logger.error("No USB connection available for read_response")
@@ -172,7 +173,7 @@ class TransportManager:
         frame_bytes: bytes,
         command_name: str,
         is_health_check: bool = False,
-    ) -> Optional[SerialFrameData]:
+    ) -> Optional[FrameData]:
         """
         Sendet Befehl und liest Antwort mit exklusivem Zugriff.
 
@@ -206,9 +207,7 @@ class TransportManager:
                 return None
 
             # Send frame
-            from .connection import SerialFrameData
-
-            frame_data = SerialFrameData(frame_bytes)
+            frame_data = FrameData(frame_bytes)
             if not self.usb_connection.send_frame(frame_data):
                 logger.error(f"Failed to send frame for {command_name}")
                 return None

@@ -1,7 +1,7 @@
 {
   "usb": {
     "port": "COM4",
-    "baud_rate": 19200,
+    "baud_rate": 115200,
     "data_bits": 8,
     "stop_bits": 1,
     "parity": "N",
@@ -20,7 +20,7 @@
     "enabled": true,
     "api_url": "https://api.wavelog.local",
     "api_key_or_secret_ref": "",
-    "polling_interval": 5,
+    "polling_interval": 10,
     "radio_name": "ICOM IC-905",
     "station_id": null,
     "wavelog_gate_http_base": "http://localhost:54321",

@@ -105,7 +105,21 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.5 CAT-Schnittstelle (Wavelog)
+### 3.5 Unsolicited Frames Handling
+
+| ID | Status | Anforderung |
+|---|---|---|
+| UNSOL-01 | 🔄 In Arbeit | Das System muss zwischen **Responses auf angefragte Befehle** und **Unsolicited Frames** (von der Hardware selbst initiiert) unterscheiden können. |
+| UNSOL-02 | 🔄 In Arbeit | Die Unterscheidung erfolgt durch Vergleich der CI-V Command-Bytes: `cmd` (Main-Command) und optional `subcmd` (Sub-Command). Ein Response passt nur, wenn beide Bytes dem **gesendeten Request** entsprechen. |
+| UNSOL-03 | 🔄 In Arbeit | Unsolicited Frames werden **verworfen** und nicht als Befehlsantwort interpretiert. Optional Pufferung für spätere Event-Verarbeitung (future feature). |
+| UNSOL-04 | 🔄 In Arbeit | Verworfene Unsolicited Frames werden auf **DEBUG-Level** geloggt: `"Unsolicited Frame verworfen: cmd=0x03, subcmd=[0x00], hex=FE FE 94 E0 03 00 ..."` |
+| UNSOL-05 | 🔄 In Arbeit | **Timeout-Schutz:** Wenn kein passendes Response-Frame innerhalb eines konfigurierbaren Zeitlimits (z.B. 0,7s für normale Befehle) empfangen wird, wird die Funktion mit Fehler zurückgegeben, nicht mit Unsolicited-Frame fehlinterpretiert. |
+| UNSOL-06 | 🔄 In Arbeit | Die Receive-Funktion ist **Thread-Safe** durch Verwendung des existierenden TransportManager-Locks (`asyncio.Lock()`). Nur ein Befehl hat gleichzeitig Zugriff auf die Empfangsfunktion. |
+| UNSOL-07 | 🔄 In Arbeit | Implementiert als neue Methode `read_response_with_command_filter()` in `USBConnection`, die den erwarteten `cmd` und `subcmd` als Parameter erwartet. Fallback auf alte `read_response()` ist nicht mehr notwendig, sobald diese vollständig migriert ist. |
+
+---
+
+### 3.6 CAT-Schnittstelle (Wavelog)
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -136,7 +150,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.6 Konfiguration
+### 3.7 Konfiguration
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -150,7 +164,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.10 Sicherheit & Verschlüsselung
+### 3.8 Sicherheit & Verschlüsselung
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -164,7 +178,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.7 Browser-Oberfläche (Frontend)
+### 3.9 Browser-Oberfläche (Frontend)
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -187,7 +201,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.8 Logging
+### 3.10 Logging
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -200,7 +214,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
 ---
 
-### 3.9 Deployment / Docker
+### 3.11 Deployment / Docker
 
 > Docker gilt ausschließlich für **Linux**. Auf Windows wird die Anwendung nativ ausgeführt.
 

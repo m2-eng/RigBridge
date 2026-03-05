@@ -1,46 +1,64 @@
 # RigBridge - Architektur-Design mit TransportManager
 
-## 🎯 Überblick: Saubere Ressourcen-Verwaltung
-
 RigBridge folgt einem **Clean Architecture** Ansatz mit zentraler Ressourcen-Verwaltung:
 
+```mermaid
+flowchart TB
+
+  id_API(API-Layer)
+  id_CIV(CIVCommandExecutor)
+  id_radio(radio)
+
+  subgraph TransportManager
+  TM_start@{ shape: sm-circ, label: "Small start" }
+  TM_usb(USBConnection)
+  TM_lan(LANconnection)
+  TM_others(...)
+  subgraph TM_genericClass
+  TM_GCfunctions(**methods**
+    connect
+    disconnect
+    callback
+    reconnect
+    send_frame
+    read_response
+  )
+  TM_status(statusHandler)
+  end
+
+  TM_start --> TM_usb
+  TM_start --> TM_lan
+  TM_start --> TM_others
+  TM_usb -..-> TM_genericClass
+  TM_lan -..-> TM_genericClass
+  TM_others -..-> TM_genericClass
+  end
+
+  id_API---id_CIV
+  id_CIV---TransportManager
+  TransportManager---id_radio
 ```
-┌─────────────────────────────────────────────────┐
-│  API-Layer (routes.py)                          │
-│  - Async Endpoints (/rig/frequency, etc)        │
-│  - Keine Semaphore-Code                         │
-│  - Einfach: await executor.execute_command()    │
-└──────────────┬──────────────────────────────────┘
-               │ async
-               ↓
-┌─────────────────────────────────────────────────┐
-│  CIVCommandExecutor (executor.py)               │
-│  - Befehlsaufbau & -ausführung                  │
-│  - ASYNC: execute_command()                     │
-│  - Nutzt TransportManager automatisch           │
-└──────────────┬──────────────────────────────────┘
-               │ nutzt
-               ↓
-┌─────────────────────────────────────────────────┐
-│  TransportManager (transport_manager.py)        │
-│  ⭐ Zentrale Resource-Verwaltung                │
-│  - asyncio.Lock() für Mutual Exclusion          │
-│  - Timeouts: Health-Check 5s, API 10s          │
-│  - Verhindert Race Conditions                   │
-└──────────────┬──────────────────────────────────┘
-               │ nutzt
-               ↓
-┌─────────────────────────────────────────────────┐
-│  USBConnection (connection.py)                  │
-│  - Low-level Serial I/O                         │
-│  - Keine Synchronisation nötig                  │
-│  - Nur geschützer Zugriff durch Lock            │
-└─────────────────────────────────────────────────┘
-```
+## API ([routes.py](../src/backend/api/routes.py))
+- Async Endpoints (/rig/frequency, etc)
+- Keine Semaphore-Code
+- Einfach: await executor.execute_command()
+
+Für mehr Informationen: [REST API Dokumentation](API.md)
+
+## CIVCommandExecutor ([executor.py](../src/backend/civ/executor.py))
+- Befehlsaufbau & -ausführung
+- ASYNC: execute_command()
+- Nutzt TransportManager automatisch
 
 ## 🔐 TransportManager: Das Herzstück
 
-Der **TransportManager** ist verantwortlich für:
+TransportManager (transport_manager.py)
+- Zentrale Resource-Verwaltung
+- asyncio.Lock() für Mutual Exclusion
+- Timeouts: Health-Check 5s, API 10s
+- Verhindert Race Conditions
+
+Er ist verantwortlich für:
 
 ### 1. Mutual Exclusion (Gegenseitiger Ausschluss)
 ```python
@@ -70,6 +88,36 @@ timeout = self.command_timeout  # 10.0s
 logger.debug(f"Exclusive access acquired for: read_frequency")
 logger.warning(f"USB lock timeout for: set_operating_frequency")
 logger.debug(f"Exclusive access released")
+```
+### connection class
+Noch nicht implementiert.
+
+### USBConnection ([usb_connection.py](../src/backend/transport/usb_connection.py))
+- Low-level Serial I/O
+- Keine Synchronisation nötig
+- Nur geschützer Zugriff durch Lock
+
+### LANconnection
+Noch nicht implementiert.
+
+### Erweiterungen
+
+Davon, dass wir TransportManager haben, profitieren wir später:
+
+```python
+# Heute: USB-Transport
+transport = TransportManager(
+    usb_connection=USBConnection(config.usb)
+)
+
+# Morgen: LAN-Transport (einfach hinzufügbar!)
+transport = TransportManager(
+    lan_connection=LANConnection(config.lan)
+)
+
+# Die API bleibt komplett gleich:
+result = await executor.execute_command('read_frequency')
+# TransportManager entscheidet: USB oder LAN? Egal!
 ```
 
 ## 📊 Beispiel: Wie Race-Conditions verhindert werden
@@ -137,50 +185,6 @@ def test_frequency_read(executor):
     # → RuntimeWarning: coroutine was never awaited
 ```
 
-## 🚀 Zukunfts-Sicherheit: Leicht austauschbare Transporte
-
-Davon, dass wir TransportManager haben, profitieren wir später:
-
-```python
-# Heute: USB-Transport
-transport = TransportManager(
-    usb_connection=USBConnection(config.usb)
-)
-
-# Morgen: LAN-Transport (einfach hinzufügbar!)
-transport = TransportManager(
-    lan_connection=LANConnection(config.lan)
-)
-
-# Die API bleibt komplett gleich:
-result = await executor.execute_command('read_frequency')
-# TransportManager entscheidet: USB oder LAN? Egal!
-```
-
-## 📝 Wichtige Files
-
-| File | Verantwortung |
-|------|--------------|
-| `src/backend/usb/transport_manager.py` | ⭐ Resource-Verwaltung, Locks, Timeouts |
-| `src/backend/civ/executor.py` | Befehlsaufbau, async execute_command() |
-| `src/backend/usb/connection.py` | Low-level Serial I/O (USB) |
-| `src/backend/api/routes.py` | REST-Endpunkte (async, no Locks!) |
-| `tests/backend/test_integration.py` | Integration Tests (async!) |
-
-## ✅ Checklist für neue Features
-
-Beim Hinzufügen neuer Befehle:
-
-- [ ] Befehl in YAML definiert (`protocols/manufacturers/icom/ic905.yaml`)
-- [ ] `executor.py` updated: `build_request()` & `parse_response()`
-- [ ] Neuer API-Endpoint: `@router.get()` oder `@router.put()`
-- [ ] Endpoint ist `async def` ✅
-- [ ] `await executor.execute_command()` nutzen ✅
-- [ ] Tests sind `@pytest.mark.asyncio` & `async def` ✅
-- [ ] Integration-Tests laufen: `pytest tests/backend/test_integration.py`
-
 ## 🔗 Verwandte Dokumentation
 
 - [BACKEND_DEVELOPMENT.md](BACKEND_DEVELOPMENT.md) - Entwicklungsanleitung
-- [API.md](API.md) - REST API Dokumentation
-- `src/backend/usb/transport_manager.py` - Sourcecode mit Docstrings

@@ -11,7 +11,7 @@ import yaml
 from enum import Enum
 
 from ..config.logger import RigBridgeLogger
-from ..usb.transport_manager import TransportManager
+from ..transport.transport_manager import TransportManager
 
 logger = RigBridgeLogger.get_logger(__name__)
 
