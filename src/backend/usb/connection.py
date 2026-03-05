@@ -20,9 +20,8 @@ logger = RigBridgeLogger.get_logger(__name__)
 class USBStatus(str, Enum):
     """USB-Verbindungsstatus."""
     DISCONNECTED = "disconnected"   # Kein USB-Port verfügbar / kann nicht geöffnet werden
-    ATTACHED = "attached"           # Port kann geöffnet werden, aber Gerät antwortet nicht
     COMMUNICATION_ERROR = "communication_error" # Fehler bei Kommunikation (z.B. I/O Fehler)
-    COMMUNICATING = "communicating" # Gerät antwortet auf Befehle
+    CONNECTED = "connected" # Gerät antwortet auf Befehle
 
 class USBStateMachine:
     """Zustandsmaschine für USB-Verbindungsstatus."""
@@ -31,9 +30,8 @@ class USBStateMachine:
         self.status = USBStatus.DISCONNECTED
         self.status_names = {
                         USBStatus.DISCONNECTED: 'GETRENNT',
-                        USBStatus.ATTACHED: 'USB ANGESCHLOSSEN',
                         USBStatus.COMMUNICATION_ERROR: 'KOMMUNIKATIONSFEHLER',
-                        USBStatus.COMMUNICATING: 'KOMMUNIKATION'
+                        USBStatus.CONNECTED: 'VERBUNDEN'
                     }
 
     def update_status(self, new_status: USBStatus, config: USBConfig, error: Optional[str] = None):
@@ -45,33 +43,28 @@ class USBStateMachine:
                 else:
                     logger.warning(f"USB Kommunikation getrennt: {config.port}")
 
-            elif new_status == USBStatus.ATTACHED:
-                logger.info(f"USB Gerät erkannt, aber keine Kommunikation")
-                if self.status == USBStatus.DISCONNECTED:
-                    logger.info(f"USB verbunden: {config.port} @ {config.baud_rate} baud")
-                if error:
-                    logger.warning(f"Fehlerinformationen: {error}")
-
             elif new_status == USBStatus.COMMUNICATION_ERROR:
                 if error:
                     logger.warning(f"USB Kommunikationsfehler: {error}")
                 else:
                     logger.warning(f"USB Kommunikationsfehler aufgetreten")
 
-            elif new_status == USBStatus.COMMUNICATING:
-                logger.info("USB Kommunikation erfolgreich hergestellt")
+            elif new_status == USBStatus.CONNECTED:
+                logger.info("USB Gerät erkannt und verbunden")
+                if self.status == USBStatus.DISCONNECTED:
+                    logger.info(f"USB verbunden: {config.port} @ {config.baud_rate} baud")
 
             # Logge den Statuswechsel mit lesbaren Namen
             logger.info(f"USB-Statusänderung: {self.status_names[self.status]} -> {self.status_names[new_status]}")
             self.status = new_status
 
-    def is_attached(self) -> bool:
-        """Prüft, ob der Status 'attached' ist."""
+    def is_connected(self) -> bool:
+        """Prüft, ob der Status 'connected' ist."""
         return self.status != USBStatus.DISCONNECTED
 
-    def attached_no_error(self) -> bool:
-        """Prüft, ob der Status 'communicating' ist."""
-        return self.status == USBStatus.ATTACHED or self.status == USBStatus.COMMUNICATING
+    def connected_no_error(self) -> bool:
+        """Prüft, ob der Status 'connected' ist."""
+        return self.status == USBStatus.CONNECTED
 
 @dataclass
 class SerialFrameData:
@@ -129,7 +122,7 @@ class USBConnection:
                 timeout=self.config.timeout,
                 write_timeout=self.config.timeout,
             )
-            self.usb_status.update_status(USBStatus.ATTACHED, self.config)
+            self.usb_status.update_status(USBStatus.CONNECTED, self.config)
             self.last_error = None
             return True
 
@@ -142,10 +135,10 @@ class USBConnection:
     def connect(self) -> bool:
         """Verbindung herstellen oder validieren."""
         if self.simulate:
-            self.usb_status.update_status(USBStatus.ATTACHED, self.config)
+            self.usb_status.update_status(USBStatus.CONNECTED, self.config)
             return True
 
-        if self.usb_status.is_attached() and self.serial_port and self.serial_port.is_open:
+        if self.usb_status.is_connected() and self.serial_port and self.serial_port.is_open:
             return True
 
         return self._connect()
@@ -169,7 +162,7 @@ class USBConnection:
         Returns:
             True wenn erfolgreich, False bei Fehler
         """
-        if not self.usb_status.attached_no_error() and not self.simulate:
+        if not self.usb_status.connected_no_error() and not self.simulate:
             # Versuche automatisch zu reconnecten
             if not self.reconnect_if_needed():
                 logger.error("Reconnect fehlgeschlagen, kann Frame nicht senden")
@@ -181,18 +174,18 @@ class USBConnection:
 
             if self.simulate:
                 logger.debug(f"[SIMULATION] Frame gesendet: {hex_str}")
-                self.usb_status.update_status(USBStatus.COMMUNICATING, self.config)
+                self.usb_status.update_status(USBStatus.CONNECTED, self.config)
                 return True
 
             bytes_sent = self.serial_port.write(frame_data.raw_bytes)
             if bytes_sent == len(frame_data.raw_bytes):
                 logger.debug(f"[TX] Frame gesendet ({bytes_sent} bytes): {hex_str}")
-                self.usb_status.update_status(USBStatus.COMMUNICATING, self.config)
+                self.usb_status.update_status(USBStatus.CONNECTED, self.config)
                 return True
 
             else:
                 e = (f"Unvollständiger Frame-Versand: "f"{bytes_sent}/{len(frame_data.raw_bytes)} bytes")
-                self.usb_status.update_status(USBStatus.ATTACHED, self.config, error=e)
+                self.usb_status.update_status(USBStatus.CONNECTED, self.config, error=e)
                 return False
 
         except serial.SerialException as e:
@@ -226,7 +219,7 @@ class USBConnection:
         Returns:
             SerialFrameData mit Antwort oder None bei Fehler/Timeout
         """
-        if not self.usb_status.is_attached() and not self.simulate:
+        if not self.usb_status.is_connected() and not self.simulate:
             logger.error("USB nicht verbunden, kann Response nicht lesen")
             return None
 
@@ -311,7 +304,7 @@ class USBConnection:
         Returns:
             True wenn verbunden, False bei anhaltendem Fehler
         """
-        if self.usb_status.attached_no_error():
+        if self.usb_status.connected_no_error():
             return True
 
         logger.warning(f"USB nicht verbunden, versuche Reconnect in {self.config.reconnect_interval}s...")
@@ -458,34 +451,3 @@ def _frequency_to_bcd(frequency_hz: int) -> bytes:
     byte4 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # GHz
 
     return bytes([byte0, byte1, byte2, byte3, byte4])
-
-
-def _bcd_to_frequency(bcd_bytes: bytes) -> int:
-    """
-    Konvertiert BCD CI-V Frequenz zurück in Hz.
-
-    Args:
-        bcd_bytes: 5 Bytes in CI-V BCD-Format
-
-    Returns:
-        Frequenz in Hz
-    """
-    if len(bcd_bytes) < 5:
-        return 0
-
-    # Reverse BCD parsing
-    byte0, byte1, byte2, byte3, byte4 = bcd_bytes[0], bcd_bytes[1], bcd_bytes[2], bcd_bytes[3], bcd_bytes[4]
-
-    hz_lo = ((byte0 & 0xF0) >> 4) + (byte0 & 0x0F) * 10
-    hz_ho = ((byte1 & 0xF0) >> 4) + (byte1 & 0x0F) * 10
-    hz_kilo = ((byte2 & 0xF0) >> 4) + (byte2 & 0x0F) * 10
-    hz_mega = ((byte3 & 0xF0) >> 4) + (byte3 & 0x0F) * 10
-    hz_giga = ((byte4 & 0xF0) >> 4) + (byte4 & 0x0F) * 10
-
-    return (
-        hz_giga * 1_000_000_000 +
-        hz_mega * 1_000_000 +
-        hz_kilo * 1_000 +
-        hz_ho * 100 +
-        hz_lo
-    )

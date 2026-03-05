@@ -29,7 +29,7 @@
     "token_file": "/run/secrets/vault_token"
   },
   "device": {
-    "name": "Icom IC905",
+    "name": "ICOM IC905",
     "manufacturer": "icom",
     "protocol_file": "ic905"
   }

@@ -69,7 +69,7 @@ class StatusWidget {
    * @param {object} status - StatusResponse von der API
    */
   renderStatus(status) {
-    // USB Status mit drei Zuständen: disconnected, attached, connected
+    // USB Status mit drei Zuständen: disconnected, connected, communication_error
     if (this.usbStatusEl) {
       const usbStatus = status.usb_status || 'disconnected';
 
@@ -78,8 +78,8 @@ class StatusWidget {
           this.usbStatusEl.textContent = '🟢 Verbunden';
           this.usbStatusEl.className = 'status-badge status-connected';
           break;
-        case 'attached':
-          this.usbStatusEl.textContent = '🟡 USB angeschlossen';
+        case 'communication_error':
+          this.usbStatusEl.textContent = '🟡 Kommunikationsfehler';
           this.usbStatusEl.className = 'status-badge status-warning';
           break;
         case 'disconnected':
