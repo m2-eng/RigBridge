@@ -19,23 +19,10 @@ from ..config.logger import RigBridgeLogger
 from ..config.settings import ConfigManager, LogLevel
 from ..config.secret_provider import create_secret_provider, SecretProviderError
 from ..civ.executor import CIVCommandExecutor, CommandResult
-from ..usb.connection import USBConnection
+from ..usb.connection import USBConnection, USBStatus
 from src import __version__
 
 logger = RigBridgeLogger.get_logger(__name__)
-
-
-# ============================================================================
-# Enums für Status-Werte
-# ============================================================================
-
-
-class USBStatus(str, Enum):
-    """USB-Verbindungsstatus."""
-    DISCONNECTED = "disconnected"  # Kein USB-Port verfügbar / kann nicht geöffnet werden
-    ATTACHED = "attached"          # Port kann geöffnet werden, aber Gerät antwortet nicht
-    CONNECTED = "connected"         # Gerät antwortet auf Befehle
-
 
 # ============================================================================
 # Globaler Executor-Cache (für Health-Check und API-Endpunkte)
@@ -292,17 +279,6 @@ async def _perform_usb_health_check() -> USBStatus:
     try:
         executor = _get_or_create_executor()
 
-        # Prüfe, ob USB-Connection existiert
-        if not executor.usb_connection:
-            logger.debug('No USB connection available')
-            return USBStatus.DISCONNECTED
-
-        # Prüfe, ob Port geöffnet werden kann
-        if not executor.usb_connection.is_connected:
-            if not executor.usb_connection.connect():
-                logger.debug('USB port cannot be opened')
-                return USBStatus.ATTACHED
-
         # Port ist offen - teste ob Gerät antwortet
         # execute_command ist ASYNC und nutzt TransportManager automatisch
         result = await executor.execute_command(
@@ -315,7 +291,7 @@ async def _perform_usb_health_check() -> USBStatus:
             return USBStatus.CONNECTED
         else:
             logger.debug(f'Health check failed: {result.error}')
-            return USBStatus.ATTACHED
+            return USBStatus.COMMUNICATION_ERROR
 
     except Exception as e:
         logger.debug(f'USB health check error: {e}')
@@ -342,27 +318,18 @@ async def start_usb_health_check_task(check_interval: int = 10):
 
         while _health_check_state['running']:
             try:
-                previous_status = _health_check_state.get('usb_status', USBStatus.DISCONNECTED)
+                previous_status = get_usb_status()
                 current_status = await _perform_usb_health_check()
 
                 # Logging bei Statusänderung
                 if current_status != previous_status:
-                    status_names = {
-                        USBStatus.DISCONNECTED: '✗ GETRENNT',
-                        USBStatus.ATTACHED: '◐ USB ANGESCHLOSSEN',
-                        USBStatus.CONNECTED: '✓ VERBUNDEN'
-                    }
-                    logger.warning(
-                        f'USB status changed: {status_names.get(previous_status, "?")} → '
-                        f'{status_names.get(current_status, "?")}'
-                    )
                     consecutive_failures = 0
-                elif current_status != USBStatus.CONNECTED:
+                elif current_status == USBStatus.COMMUNICATION_ERROR:
                     consecutive_failures += 1
                     if consecutive_failures % 6 == 1:
                         logger.warning(f'Health check failed {consecutive_failures} times')
 
-                _health_check_state['usb_status'] = current_status
+                _health_check_state['usb_status'] = get_usb_status()
                 _health_check_state['last_check'] = asyncio.get_event_loop().time()
 
             except Exception as e:
@@ -396,7 +363,8 @@ async def stop_usb_health_check_task():
 
 def get_usb_status() -> USBStatus:
     """Gibt aktuellen, zyklisch geprüften USB-Status zurück."""
-    return _health_check_state.get('usb_status', USBStatus.DISCONNECTED)
+    executor = _get_or_create_executor()
+    return executor.usb_connection.usb_status.status if executor and executor.usb_connection else USBStatus.DISCONNECTED
 
 
 # ============================================================================
@@ -442,7 +410,7 @@ def create_router() -> APIRouter:
 
         return StatusResponse(
             usb_status=usb_status,
-            usb_connected=(usb_status in [USBStatus.ATTACHED, USBStatus.CONNECTED]),
+            usb_connected=(usb_status in [USBStatus.CONNECTED, USBStatus.COMMUNICATION_ERROR]),
             degraded_mode=degraded_mode,
             secret_provider_available=secret_provider_available,
             device_name=config.device.name,
@@ -625,7 +593,7 @@ def create_router() -> APIRouter:
 
             if result.success and result.data:
                 frequency = result.data.get('frequency', 0)
-                logger.info(f'Frequency read: {frequency} Hz')
+                logger.debug(f'Frequency read: {frequency} Hz')
                 return FrequencyResponse(frequency_hz=frequency)
             else:
                 raise HTTPException(
@@ -655,7 +623,7 @@ def create_router() -> APIRouter:
             )
 
             if result.success:
-                logger.info(f'Frequency set to {request.frequency_hz} Hz')
+                logger.debug(f'Frequency set to {request.frequency_hz} Hz')
                 return CommandResponse(
                     success=True,
                     command='set_operating_frequency',
@@ -693,7 +661,7 @@ def create_router() -> APIRouter:
 
             if result.success and result.data:
                 mode = result.data.get('mode', 'UNKNOWN')
-                logger.info(f'Mode read: {mode}')
+                logger.debug(f'Mode read: {mode}')
                 return ModeResponse(mode=mode)
             else:
                 raise HTTPException(
@@ -723,7 +691,7 @@ def create_router() -> APIRouter:
             )
 
             if result.success:
-                logger.info(f'Mode set to {request.mode}')
+                logger.debug(f'Mode set to {request.mode}')
                 return CommandResponse(
                     success=True,
                     command='set_operating_mode',
@@ -762,7 +730,7 @@ def create_router() -> APIRouter:
             if result.success and result.data:
                 raw_value = result.data.get('level_raw', 0)
                 db_value = interpolate_s_meter(raw_value)
-                logger.info(f'S-Meter read: {raw_value} (raw) = {db_value} dB')
+                logger.debug(f'S-Meter read: {raw_value} (raw) = {db_value} dB')
                 return SMeterResponse(level_db=db_value, level_raw=raw_value)
             else:
                 raise HTTPException(
