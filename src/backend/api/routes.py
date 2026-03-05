@@ -20,7 +20,7 @@ from ..config.logger import RigBridgeLogger
 from ..config.settings import ConfigManager, LogLevel
 from ..config.secret_provider import create_secret_provider, SecretProviderError
 from ..civ.executor import CIVCommandExecutor, CommandResult
-from ..usb.connection import USBConnection, USBStatus
+from ..transport import USBConnection, TransportStatus
 from ..cat.cat_client import WavelogCatClient
 from src import __version__
 
@@ -206,7 +206,7 @@ class DeviceInfo(BaseModel):
 
 class StatusResponse(BaseModel):
     """System-Status."""
-    usb_status: USBStatus = Field(
+    usb_status: TransportStatus = Field(
         description='USB-Verbindungsstatus: disconnected, attached, connected'
     )
     usb_connected: bool = Field(
@@ -311,7 +311,7 @@ class ConfigUpdateRequest(BaseModel):
 _health_check_state = {
     'task': None,
     'running': False,
-    'usb_status': USBStatus.DISCONNECTED,
+    'usb_status': TransportStatus.DISCONNECTED,
     'last_check': None,
 }
 
@@ -324,7 +324,7 @@ _cat_client_state = {
 }
 
 
-async def _perform_usb_health_check() -> USBStatus:
+async def _perform_usb_health_check() -> TransportStatus:
     """
     Führt einen USB-Verbindungstest durch.
 
@@ -335,7 +335,7 @@ async def _perform_usb_health_check() -> USBStatus:
     für Synchronisierung.
 
     Returns:
-        USBStatus: disconnected, attached oder connected
+        TransportStatus: disconnected, attached oder connected
     """
     try:
         executor = _get_or_create_executor()
@@ -349,14 +349,14 @@ async def _perform_usb_health_check() -> USBStatus:
 
         if result.success:
             logger.debug('Device responded to health check')
-            return USBStatus.CONNECTED
+            return TransportStatus.CONNECTED
         else:
             logger.debug(f'Health check failed: {result.error}')
-            return USBStatus.COMMUNICATION_ERROR
+            return TransportStatus.COMMUNICATION_ERROR
 
     except Exception as e:
         logger.debug(f'USB health check error: {e}')
-        return USBStatus.DISCONNECTED
+        return TransportStatus.DISCONNECTED
 
 
 async def start_usb_health_check_task(check_interval: int = 10):
@@ -385,7 +385,7 @@ async def start_usb_health_check_task(check_interval: int = 10):
                 # Logging bei Statusänderung
                 if current_status != previous_status:
                     consecutive_failures = 0
-                elif current_status == USBStatus.COMMUNICATION_ERROR:
+                elif current_status == TransportStatus.COMMUNICATION_ERROR:
                     consecutive_failures += 1
                     if consecutive_failures % 6 == 1:
                         logger.warning(f'Health check failed {consecutive_failures} times')
@@ -422,10 +422,10 @@ async def stop_usb_health_check_task():
     logger.info('USB health check task stopped')
 
 
-def get_usb_status() -> USBStatus:
+def get_usb_status() -> TransportStatus:
     """Gibt aktuellen, zyklisch geprüften USB-Status zurück."""
     executor = _get_or_create_executor()
-    return executor.usb_connection.usb_status.status if executor and executor.usb_connection else USBStatus.DISCONNECTED
+    return executor.usb_connection.state.status if executor and executor.usb_connection else TransportStatus.DISCONNECTED
 
 
 # ============================================================================
@@ -681,7 +681,7 @@ def create_router() -> APIRouter:
 
         return StatusResponse(
             usb_status=usb_status,
-            usb_connected=(usb_status in [USBStatus.CONNECTED, USBStatus.COMMUNICATION_ERROR]),
+            usb_connected=(usb_status in [TransportStatus.CONNECTED, TransportStatus.COMMUNICATION_ERROR]),
             degraded_mode=degraded_mode,
             secret_provider_available=secret_provider_available,
             device_name=config.device.name,

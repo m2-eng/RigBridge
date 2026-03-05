@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 import logging
 import asyncio
 
@@ -38,14 +39,14 @@ def get_version() -> str:
 
 def create_app(
     config_path: Path = Path('config.json'),
-    log_level: LogLevel = LogLevel.INFO,
+    log_level: Optional[LogLevel] = None,
 ) -> FastAPI:
     """
     Factory-Funktion zum Erstellen der FastAPI-Anwendung.
 
     Args:
         config_path: Pfad zur Konfigurationsdatei
-        log_level: Globales Log-Level
+        log_level: Globales Log-Level; wenn None, wird api.log_level aus config.json verwendet
 
     Returns:
         Konfigurierte FastAPI-Instanz
@@ -60,7 +61,7 @@ def create_app(
             logger.info('USB health check task started')
         except Exception as e:
             logger.error(f'Failed to start USB health check task: {e}')
-        
+
         try:
             asyncio.create_task(start_cat_update_task())
             logger.info('CAT update task started (wenn aktiviert)')
@@ -75,12 +76,18 @@ def create_app(
             logger.info('USB health check task stopped')
         except Exception as e:
             logger.error(f'Failed to stop USB health check task: {e}')
-        
+
         try:
             await stop_cat_update_task()
             logger.info('CAT update task stopped')
         except Exception as e:
             logger.error(f'Failed to stop CAT update task: {e}')
+
+    # Konfiguration laden
+    config = ConfigManager.initialize(config_path)
+
+    # Effektives Log-Level bestimmen (explizit uebergeben oder aus config.json)
+    effective_log_level = log_level or config.api.log_level
 
     # Logger konfigurieren
     level_map = {
@@ -89,13 +96,13 @@ def create_app(
         LogLevel.WARNING: logging.WARNING,
         LogLevel.ERROR: logging.ERROR,
     }
-    RigBridgeLogger.configure(level=level_map[log_level])
+    RigBridgeLogger.configure(level=level_map[effective_log_level])
     redaction_filter = RigBridgeLogger.get_redaction_filter()
 
     # Uvicorn- und andere Logger auch mit StructuredFormatter konfigurieren
     for logger_name in ['uvicorn', 'uvicorn.error']:
         logger_obj = logging.getLogger(logger_name)
-        logger_obj.setLevel(level_map[log_level])
+        logger_obj.setLevel(level_map[effective_log_level])
         logger_obj.propagate = False
 
         # Alte Handler entfernen
@@ -110,7 +117,7 @@ def create_app(
 
     # Uvicorn Access Logger - speziell konfigurieren
     access_logger = logging.getLogger('uvicorn.access')
-    access_logger.setLevel(level_map[log_level])
+    access_logger.setLevel(level_map[effective_log_level])
     access_logger.propagate = False
 
     # Alte Handler entfernen
@@ -123,8 +130,6 @@ def create_app(
     access_handler.addFilter(redaction_filter)
     access_logger.addHandler(access_handler)
 
-    # Konfiguration laden
-    config = ConfigManager.initialize(config_path)
     logger.info(f'Configuration loaded from {config_path}')
     logger.info(f'Device: {config.device.name}')
     logger.info(f'USB Port: {config.usb.port} ({config.usb.baud_rate} baud)')

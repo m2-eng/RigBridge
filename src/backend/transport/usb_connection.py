@@ -1,109 +1,78 @@
 """
-USB/Serial-Verbindungsverwaltung für RigBridge.
+USB/Serial Transport-Implementierung für RigBridge.
 
-Verwaltet eine serielle Verbindung zu einem Funkgerät
-mit Reconnect-Logik und Fehlerbehandlung.
+Implementiert BaseTransport für serielle USB-Verbindungen
+mit CI-V Protokoll-Support.
 """
 
 import serial
 import time
-from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass
-from enum import Enum
 
 from ..config.logger import RigBridgeLogger
 from ..config.settings import USBConfig
+from .base_transport import BaseTransport, FrameData
+from .connection_state import TransportStatus
 
 logger = RigBridgeLogger.get_logger(__name__)
 
-class USBStatus(str, Enum):
-    """USB-Verbindungsstatus."""
-    DISCONNECTED = "disconnected"   # Kein USB-Port verfügbar / kann nicht geöffnet werden
-    COMMUNICATION_ERROR = "communication_error" # Fehler bei Kommunikation (z.B. I/O Fehler)
-    CONNECTED = "connected" # Gerät antwortet auf Befehle
 
-class USBStateMachine:
-    """Zustandsmaschine für USB-Verbindungsstatus."""
+class USBConnection(BaseTransport):
+    """
+    USB/Serial Transport-Implementierung.
 
-    def __init__(self):
-        self.status = USBStatus.DISCONNECTED
-        self.status_names = {
-                        USBStatus.DISCONNECTED: 'GETRENNT',
-                        USBStatus.COMMUNICATION_ERROR: 'KOMMUNIKATIONSFEHLER',
-                        USBStatus.CONNECTED: 'VERBUNDEN'
-                    }
-
-    def update_status(self, new_status: USBStatus, config: USBConfig, error: Optional[str] = None):
-        """Aktualisiert den USB-Status und speichert Fehlerinformationen."""
-        if new_status != self.status:
-            if new_status == USBStatus.DISCONNECTED:
-                if error:
-                    logger.error(f"USB Kommunikation verloren: {error}")
-                else:
-                    logger.warning(f"USB Kommunikation getrennt: {config.port}")
-
-            elif new_status == USBStatus.COMMUNICATION_ERROR:
-                if error:
-                    logger.warning(f"USB Kommunikationsfehler: {error}")
-                else:
-                    logger.warning(f"USB Kommunikationsfehler aufgetreten")
-
-            elif new_status == USBStatus.CONNECTED:
-                logger.info("USB Gerät erkannt und verbunden")
-                if self.status == USBStatus.DISCONNECTED:
-                    logger.info(f"USB verbunden: {config.port} @ {config.baud_rate} baud")
-
-            # Logge den Statuswechsel mit lesbaren Namen
-            logger.info(f"USB-Statusänderung: {self.status_names[self.status]} -> {self.status_names[new_status]}")
-            self.status = new_status
-
-    def is_connected(self) -> bool:
-        """Prüft, ob der Status 'connected' ist."""
-        return self.status != USBStatus.DISCONNECTED
-
-    def connected_no_error(self) -> bool:
-        """Prüft, ob der Status 'connected' ist."""
-        return self.status == USBStatus.CONNECTED
-
-@dataclass
-class SerialFrameData:
-    """Datenkapseln für CI-V Frames."""
-    raw_bytes: bytes
-    timestamp: float = None
-
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = time.time()
-
-    def __repr__(self) -> str:
-        hex_str = ' '.join(f'{b:02X}' for b in self.raw_bytes)
-        return f"SerialFrameData(bytes={len(self.raw_bytes)}, hex={hex_str})"
-
-
-class USBConnection:
-    """Verwaltet die serielle USB-Verbindung zum Funkgerät."""
+    Verwaltet serielle Verbindung zu Funkgerät über USB
+    mit automatischem Reconnect und Fehlerbehandlung.
+    """
 
     def __init__(self, config: USBConfig, simulate: bool = False):
         """
-        Initialisiert die USB-Verbindung.
+        Initialisiert USB-Verbindung.
 
         Args:
-            config: USBConfig-Objekt mit Port-Einstellungen
-            simulate: Wenn True, verwendet MockSerial statt echter Verbindung
+            config: USBConfig mit Port-Einstellungen
+            simulate: Wenn True, simulierter Modus (ohne echte Hardware)
         """
+        super().__init__(transport_type="USB")
+
         self.config = config
         self.simulate = simulate
         self.serial_port: Optional[serial.Serial] = None
-        self.last_error: Optional[str] = None
-        self.is_connected = False
-        self.usb_status = USBStateMachine()
 
+        # Verbinde automatisch im nicht-simulierten Modus
         if not simulate:
-            self._connect()
+            if self.connect():
+                # Starte unsolicited frame handling nur wenn Handler registriert sind
+                # (wird automatisch von register_unsolicited_handler() gestartet)
+                self.register_unsolicited_handler(lambda frame: None)  # Dummy-Handler, damit Task gestartet wird
+                pass
 
-    def _connect(self) -> bool:
-        """Stellt eine echte serielle Verbindung her."""
+    def connect(self) -> bool:
+        """
+        Stellt USB-Verbindung her.
+
+        Returns:
+            True wenn erfolgreich, False bei Fehler
+        """
+        if self.simulate:
+            self.state.update_status(
+                TransportStatus.CONNECTED,
+                connection_info="Simulation Mode"
+            )
+            return True
+
+        if self.state.is_connected() and self.serial_port and self.serial_port.is_open:
+            return True
+
+        return self._connect_serial()
+
+    def _connect_serial(self) -> bool:
+        """
+        Interne Methode: Stellt echte serielle Verbindung her.
+
+        Returns:
+            True wenn erfolgreich, False bei Fehler
+        """
         try:
             # Schließe alte Verbindung falls noch offen
             if self.serial_port and self.serial_port.is_open:
@@ -113,6 +82,7 @@ class USBConnection:
                 except Exception:
                     pass
 
+            # Öffne neue Verbindung
             self.serial_port = serial.Serial(
                 port=self.config.port,
                 baudrate=self.config.baud_rate,
@@ -122,84 +92,102 @@ class USBConnection:
                 timeout=self.config.timeout,
                 write_timeout=self.config.timeout,
             )
-            self.usb_status.update_status(USBStatus.CONNECTED, self.config)
+
+            connection_info = f"{self.config.port} @ {self.config.baud_rate} baud"
+            self.state.update_status(TransportStatus.CONNECTED, connection_info=connection_info)
             self.last_error = None
+
             return True
 
         except serial.SerialException as e:
             self.last_error = str(e)
-            self.usb_status.update_status(USBStatus.DISCONNECTED, self.config, error=str(e))
+            self.state.update_status(
+                TransportStatus.DISCONNECTED,
+                connection_info=self.config.port,
+                error=str(e)
+            )
             logger.error(f"USB-Verbindungsfehler: {e}")
             return False
 
-    def connect(self) -> bool:
-        """Verbindung herstellen oder validieren."""
-        if self.simulate:
-            self.usb_status.update_status(USBStatus.CONNECTED, self.config)
-            return True
-
-        if self.usb_status.is_connected() and self.serial_port and self.serial_port.is_open:
-            return True
-
-        return self._connect()
-
     def disconnect(self) -> None:
-        """Trennt die serielle Verbindung."""
+        """
+        Trennt USB-Verbindung.
+
+        Stoppt auch Background-Tasks für unsolicited frames.
+        """
+        # Stoppe Background-Task (von BaseTransport)
+        self._stop_listening_for_unsolicited_frames()
+
+        # Schließe serielle Verbindung
         if self.serial_port and self.serial_port.is_open:
             try:
                 self.serial_port.close()
-                self.usb_status.update_status(USBStatus.DISCONNECTED, self.config)
+                self.state.update_status(
+                    TransportStatus.DISCONNECTED,
+                    connection_info=self.config.port
+                )
             except Exception as e:
                 logger.error(f"Fehler beim Trennen der USB-Verbindung: {e}")
 
-    def send_frame(self, frame_data: SerialFrameData) -> bool:
+    def send_frame(self, frame: FrameData) -> bool:
         """
-        Sendet ein CI-V Frame über die serielle Verbindung.
+        Sendet Frame über USB.
 
         Args:
-            frame_data: SerialFrameData mit den zu sendenden Bytes
+            frame: Zu sendende Frame-Daten
 
         Returns:
             True wenn erfolgreich, False bei Fehler
         """
-        if not self.usb_status.connected_no_error() and not self.simulate:
+        if not self.state.is_fully_operational() and not self.simulate:
             # Versuche automatisch zu reconnecten
             if not self.reconnect_if_needed():
                 logger.error("Reconnect fehlgeschlagen, kann Frame nicht senden")
                 return False
 
         try:
-            # Formatiere Bytes als HEX für Debug-Output
-            hex_str = " ".join(f"{b:02X}" for b in frame_data.raw_bytes)
+            # Formatiere für Debug-Output
+            hex_str = " ".join(f"{b:02X}" for b in frame.raw_bytes)
 
             if self.simulate:
                 logger.debug(f"[SIMULATION] Frame gesendet: {hex_str}")
-                self.usb_status.update_status(USBStatus.CONNECTED, self.config)
+                self.state.update_status(TransportStatus.CONNECTED, "Simulation")
                 return True
 
-            bytes_sent = self.serial_port.write(frame_data.raw_bytes)
-            if bytes_sent == len(frame_data.raw_bytes):
+            # Sende über echte Verbindung
+            bytes_sent = self.serial_port.write(frame.raw_bytes)
+
+            if bytes_sent == len(frame.raw_bytes):
                 logger.debug(f"[TX] Frame gesendet ({bytes_sent} bytes): {hex_str}")
-                self.usb_status.update_status(USBStatus.CONNECTED, self.config)
+                self.state.update_status(
+                    TransportStatus.CONNECTED,
+                    f"{self.config.port} @ {self.config.baud_rate} baud"
+                )
                 return True
-
             else:
-                e = (f"Unvollständiger Frame-Versand: "f"{bytes_sent}/{len(frame_data.raw_bytes)} bytes")
-                self.usb_status.update_status(USBStatus.CONNECTED, self.config, error=e)
+                error_msg = f"Unvollständiger Frame-Versand: {bytes_sent}/{len(frame.raw_bytes)} bytes"
+                self.state.update_status(
+                    TransportStatus.COMMUNICATION_ERROR,
+                    self.config.port,
+                    error=error_msg
+                )
                 return False
 
         except serial.SerialException as e:
             self.last_error = str(e)
-            self.usb_status.update_status(USBStatus.COMMUNICATION_ERROR, self.config, error=str(e))
+            self.state.update_status(
+                TransportStatus.COMMUNICATION_ERROR,
+                self.config.port,
+                error=str(e)
+            )
 
-            # Versuche einmalig zu reconnecten
+            # Versuche einmalig reconnect
             logger.info("Versuche automatischen Reconnect nach Fehler...")
             if self.reconnect_if_needed():
-                # Retry nach erfolgreichem Reconnect
                 logger.info("Reconnect erfolgreich, wiederhole Frame-Versand...")
                 try:
-                    bytes_sent = self.serial_port.write(frame_data.raw_bytes)
-                    if bytes_sent == len(frame_data.raw_bytes):
+                    bytes_sent = self.serial_port.write(frame.raw_bytes)
+                    if bytes_sent == len(frame.raw_bytes):
                         logger.info(f"[TX] Frame nach Reconnect gesendet ({bytes_sent} bytes)")
                         return True
                 except Exception as retry_error:
@@ -207,19 +195,19 @@ class USBConnection:
 
             return False
 
-    def read_response(self, timeout: Optional[float] = None) -> Optional[SerialFrameData]:
+    def read_response(self, timeout: Optional[float] = None) -> Optional[FrameData]:
         """
-        Liest die Antwort vom Funkgerät.
+        Liest Response vom Funkgerät.
 
-        Erwartet CI-V Format: 0xFE 0xFE ... 0xFD (mit Timeout nach letztem 0xFD)
+        Erwartet CI-V Format: 0xFE 0xFE ... 0xFD
 
         Args:
-            timeout: Optionaler Timeout in Sekunden
+            timeout: Optional: Timeout in Sekunden
 
         Returns:
-            SerialFrameData mit Antwort oder None bei Fehler/Timeout
+            FrameData mit Antwort oder None bei Fehler/Timeout
         """
-        if not self.usb_status.is_connected() and not self.simulate:
+        if not self.state.is_connected() and not self.simulate:
             logger.error("USB nicht verbunden, kann Response nicht lesen")
             return None
 
@@ -228,12 +216,12 @@ class USBConnection:
                 # Simulation: keine Daten
                 return None
 
-            # Setze temporären Timeout falls angegeben
+            # Setze temporären Timeout
             old_timeout = self.serial_port.timeout
             if timeout:
                 self.serial_port.timeout = timeout
 
-            # Lese Frame-Daten (0xFE...0xFD)
+            # Lese CI-V Frame (0xFE...0xFD)
             frame_data = bytearray()
             in_frame = False
 
@@ -260,9 +248,12 @@ class USBConnection:
                         # Frame-Ende gefunden
                         hex_str = " ".join(f"{b:02X}" for b in frame_data)
                         logger.debug(f"[RX] Frame empfangen ({len(frame_data)} bytes): {hex_str}")
+
+                        # Timeout zurücksetzen
                         if timeout:
                             self.serial_port.timeout = old_timeout
-                        return SerialFrameData(bytes(frame_data))
+
+                        return FrameData(bytes(frame_data))
 
             # Timeout ohne 0xFD
             if timeout:
@@ -276,7 +267,11 @@ class USBConnection:
 
         except serial.SerialException as e:
             self.last_error = str(e)
-            self.usb_status.update_status(USBStatus.COMMUNICATION_ERROR, self.config, error=str(e))
+            self.state.update_status(
+                TransportStatus.COMMUNICATION_ERROR,
+                self.config.port,
+                error=str(e)
+            )
 
             # Versuche automatischen Reconnect
             logger.info("Versuche automatischen Reconnect nach Lesefehler...")
@@ -285,46 +280,33 @@ class USBConnection:
 
             return None
 
-    def reconnect(self) -> bool:
-        """
-        Erzwingt einen Reconnect durch explizites Disconnect + Connect.
-
-        Returns:
-            True wenn erfolgreich verbunden, False bei Fehler
-        """
-        logger.info(f"Erzwinge Reconnect für {self.config.port} ...")
-        self.disconnect()
-        time.sleep(0.5)  # Kurze Pause für Port-Release
-        return self._connect()
-
     def reconnect_if_needed(self) -> bool:
         """
-        Fehlertoleranz: Versucht Reconnect wenn Fehler aufgetreten sind.
+        Fehlertoleranz: Reconnect bei Fehlern.
 
         Returns:
             True wenn verbunden, False bei anhaltendem Fehler
         """
-        if self.usb_status.connected_no_error():
+        if self.state.is_fully_operational():
             return True
 
-        logger.warning(f"USB nicht verbunden, versuche Reconnect in {self.config.reconnect_interval}s...")
+        logger.warning(
+            f"USB nicht verbunden, versuche Reconnect in "
+            f"{self.config.reconnect_interval}s..."
+        )
         time.sleep(self.config.reconnect_interval)
 
         return self.reconnect()
 
-    def __enter__(self):
-        """Context Manager support."""
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context Manager cleanup."""
-        self.disconnect()
-
     def __repr__(self) -> str:
-        status = "verbunden" if self.is_connected else "getrennt"
+        """String-Repräsentation."""
+        status = "verbunden" if self.state.is_connected() else "getrennt"
         return f"USBConnection({self.config.port}, {status})"
 
+
+# =============================================================================
+# Mock-Serial für Testing
+# =============================================================================
 
 class MockSerial:
     """Mock-Serial für Testing ohne echte Hardware."""
@@ -382,7 +364,7 @@ def create_mock_response_factory(frequency_hz: int = 145500000, mode: str = 'CW'
         mode: Zu simulierender Modus
 
     Returns:
-        Funktion(request_bytes) -> response_bytes
+        Factory-Funktion(request_bytes) -> response_bytes
     """
     def factory(request: bytes) -> Optional[bytes]:
         """Generiert eine simulierte CI-V-Antwort."""
@@ -395,22 +377,17 @@ def create_mock_response_factory(frequency_hz: int = 145500000, mode: str = 'CW'
 
         # Read Operating Frequency: cmd=0x03, subcmd=0x00
         if cmd == 0x03 and subcmd == 0x00:
-            # Antworte mit aktuelle Frequenz als BCD
             freq_bcd = _frequency_to_bcd(frequency_hz)
-            # Response: [0xFE, 0xFE, 0xE0, 0x94, 0x03, 0x00, ...freq_bcd, 0xFD]
             return bytes([0xFE, 0xFE, 0xE0, 0x94, 0x03, 0x00]) + freq_bcd + bytes([0xFD])
 
         # Read Operating Mode: cmd=0x04, subcmd=0x00
         if cmd == 0x04 and subcmd == 0x00:
-            # CW=0x05, SSB=0x01, AM=0x02, FM=0x03, DV=0x04
             mode_codes = {'CW': 0x05, 'SSB': 0x01, 'AM': 0x02, 'FM': 0x03}
             mode_code = mode_codes.get(mode, 0x05)
-            # Response: [0xFE, 0xFE, 0xE0, 0x94, 0x04, 0x00, mode_code, filter, 0xFD]
             return bytes([0xFE, 0xFE, 0xE0, 0x94, 0x04, 0x00, mode_code, 0x00, 0xFD])
 
         # Read S-Meter: cmd=0x15, subcmd=0x02
         if cmd == 0x15 and subcmd == 0x02:
-            # Response mit S-Meter Wert (0-255)
             s_meter_value = 0x78  # S8
             return bytes([0xFE, 0xFE, 0xE0, 0x94, 0x15, 0x02, s_meter_value, 0xFD])
 
@@ -437,17 +414,16 @@ def _frequency_to_bcd(frequency_hz: int) -> bytes:
     - kHz: 500 = 0x00 + 5 (reversed)
     - Hz: 0 (reversed)
     """
-    # Reverse BCD format für Icom CI-V
     freq = frequency_hz
 
-    byte0 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # Hz LO
+    byte0 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)
     freq //= 100
-    byte1 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # Hz HO (kHz)
+    byte1 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)
     freq //= 100
-    byte2 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # kHz (MHz)
+    byte2 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)
     freq //= 100
-    byte3 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # MHz
+    byte3 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)
     freq //= 100
-    byte4 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)  # GHz
+    byte4 = ((freq % 100) % 10) << 4 | ((freq % 100) // 10)
 
     return bytes([byte0, byte1, byte2, byte3, byte4])

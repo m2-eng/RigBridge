@@ -4,7 +4,7 @@
 
 Die `connection.py` verwaltet die serielle USB-Verbindung zu Funkgeräten (z.B. Icom) mit CI-V-Protokoll. Sie stellt Funktionen für verbindungsrobusten Datentransfer bereit, einschließlich automatischer Reconnect-Logik und Fehlerbehandlung.
 
-**Datei:** `src/backend/usb/connection.py`
+**Datei:** `src/backend/transport/usb_connection.py` (vormals `usb/connection.py`)
 
 **Hauptaufgaben:**
 - Öffnen/Schließen der seriellen USB-Verbindung
@@ -293,7 +293,7 @@ stateDiagram-v2
 ### Einfache Verwendung
 
 ```python
-from src.backend.usb.connection import USBConnection
+from src.backend.transport import USBConnection, TransportStatus
 from src.backend.config.settings import USBConfig
 
 # Konfiguration laden
@@ -326,13 +326,13 @@ with USBConnection(config) as conn:
 ### Status prüfen
 
 ```python
-from src.backend.usb.connection import USBStatus
+from src.backend.transport import USBConnection, TransportStatus
 
 conn = USBConnection(config)
 
-if conn.usb_status.connected_no_error():
+if conn.connection_state.connected_no_error():
     print("Verbunden und bereit")
-elif conn.usb_status.is_connected():
+elif conn.connection_state.is_connected():
     print("Verbunden, aber Fehler")
 else:
     print("Nicht verbunden")

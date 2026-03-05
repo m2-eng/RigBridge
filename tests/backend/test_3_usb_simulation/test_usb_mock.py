@@ -9,7 +9,7 @@ import asyncio
 import pytest
 
 from src.backend.civ.executor import CIVCommandExecutor, CommandResult
-from src.backend.usb.connection import USBConnection
+from src.backend.transport import USBConnection
 
 
 @pytest.mark.usb_sim

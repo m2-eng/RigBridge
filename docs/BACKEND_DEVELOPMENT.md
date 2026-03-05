@@ -100,6 +100,8 @@ Die Befehlsausführung ist jetzt **asynchron** und nutzt einen zentralen **Trans
 ```python
 import asyncio
 from src.backend.civ import CIVCommandExecutor
+from src.backend.transport.transport_manager import TransportManager
+from src.backend.transport import USBConnection
 
 executor = CIVCommandExecutor(
     protocol_file=Path('protocols/manufacturers/icom/ic905.yaml'),
@@ -198,7 +200,7 @@ async def set_frequency(request: FrequencyRequest) -> Dict[str, Any]:
    # parse_response() für Dekodieren des Uhrzeit-Formats
    ```
 
-3. **USB-Integration** (`src/backend/usb/connection.py`)
+3. **Transport-Integration** (`src/backend/transport/usb_connection.py`)
    ```python
    # Echte serial.Serial()-Kommunikation
    ```
@@ -308,7 +310,7 @@ for name, cmd in executor.parser.commands.items():
 ## 🏗️ Nächste Entwicklungs-Schritte
 
 ### Phase 1: USB/Serial (🔴 BLOCKIERT)
-- [ ] `src/backend/usb/connection.py` - pyserial abstraction
+- [ ] `src/backend/transport/usb_connection.py` - pyserial abstraction
 - [ ] Connection state management
 - [ ] Reconnection logic
 
