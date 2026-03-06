@@ -44,7 +44,7 @@ def protocol_file():
 @pytest.fixture(scope="session")
 def manufacturer_file():
     """Herstellerdatei für Icom."""
-    return PROJECT_ROOT / "protocols" / "manufacturers" / "icom" / "icom.yaml"
+    return PROJECT_ROOT / "protocols" / "manufacturers" / "icom.yaml"
 
 
 @pytest.fixture(scope="session")
@@ -63,7 +63,7 @@ def logger():
 def reset_protocol_manager():
     """
     Setze ProtocolManager vor jedem Test zurück.
-    
+
     Da der ProtocolManager ein Singleton ist, muss der State zwischen
     Tests zurückgesetzt werden, um Seiteneffekte zu vermeiden.
     """
