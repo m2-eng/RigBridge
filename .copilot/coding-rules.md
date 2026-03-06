@@ -223,3 +223,22 @@ Einrückung gemäß `.vscode/settings.json` und `.editorconfig` (kein manuelles 
   IS_LINUX   = sys.platform.startswith('linux')
   ```
   Plattformspezifischen Code in eigene Hilfsfunktionen auslagern (`src/backend/usb/platform_utils.py`).
+
+---
+
+## 4. Dokumentationsrichtlinien (Single-Source-of-Truth)
+
+- **Keine Funktions- oder Klassendefinitionen** in Markdown-Dokumenten (z.B. TRANSPORT_MANAGER.md, ARCHITECTURE.md).
+- **Verhalten, Schnittstellen und Workflows** werden in natürlicher Sprache, Tabellen oder Diagrammen beschrieben.
+- **Code-Beispiele** sind erlaubt, wenn sie die Anwendung (Nutzung) zeigen, nicht die Implementierung.
+- **Parameter, Stati, Konfigurationen** immer als Tabelle oder Bullet-Liste dokumentieren.
+- **Mermaid-Diagramme** für Abläufe, Architektur und Status-Übergänge verwenden.
+- **Sprache:** Code- und Klassennamen Englisch, Beschreibungen Deutsch.
+- **Nach Code-Änderungen:** Nur konzeptionelle Doku aktualisieren, keine Funktionsdefinitionen nachziehen.
+- **Checkliste vor Commit:**
+  - [ ] Keine Funktions-/Klassendefinitionen in Markdown?
+  - [ ] Tabellen und Workflows aktuell?
+  - [ ] Beispiele zeigen nur Anwendung, nicht Implementierung?
+  - [ ] Diagramme aktuell?
+
+**Ablageort dieser Regeln:** `.copilot/coding-rules.md` (wird von Copilot und Entwicklern beachtet)

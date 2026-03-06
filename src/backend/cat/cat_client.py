@@ -47,6 +47,8 @@ class WavelogCatClient:
         self._ws_connection = None
         self._ws_task: Optional[asyncio.Task] = None
         self._running = False
+        self.last_error_kind: Optional[str] = None
+        self.last_http_status: Optional[int] = None
 
     async def __aenter__(self) -> 'WavelogCatClient':
         """Context Manager Entry: Initialisiert HTTP Client."""
@@ -112,10 +114,12 @@ class WavelogCatClient:
             RuntimeError: Wenn HTTP Client nicht initialisiert ist
         """
         if not self._http_client:
+            self.last_error_kind = 'client_not_initialized'
             raise RuntimeError('HTTP Client not initialized. Use async context manager.')
 
         if not self._api_key:
             logger.error('WaveLog API-Key nicht gesetzt')
+            self.last_error_kind = 'auth'
             return False
 
         # Timestamp im Format YYYY/MM/DD  HH:MM (zwei Leerzeichen zwischen Datum und Zeit!)
@@ -153,9 +157,16 @@ class WavelogCatClient:
             )
 
             if response.status_code == 200:
+                self.last_error_kind = None
+                self.last_http_status = 200
                 logger.debug(f'WaveLog Antwort: {response.text}')
                 return True
             else:
+                self.last_http_status = response.status_code
+                if response.status_code in (401, 403):
+                    self.last_error_kind = 'auth'
+                else:
+                    self.last_error_kind = 'http_status'
                 logger.error(
                     f'WaveLog API Error: Status {response.status_code}, '
                     f'Response: {response.text}'
@@ -163,6 +174,8 @@ class WavelogCatClient:
                 return False
 
         except httpx.RequestError as e:
+            self.last_error_kind = 'network'
+            self.last_http_status = None
             logger.error(f'Fehler beim Senden an WaveLog: {e}')
             return False
 

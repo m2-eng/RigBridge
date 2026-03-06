@@ -92,15 +92,25 @@ class StatusWidget {
 
     // CAT Status
     if (this.catStatusEl) {
-      let catText = '⚫ Inaktiv';
+      const catStatus = status.cat_status || {};
+      let catText = '⚫ Getrennt';
       let catClass = 'status-badge status-disconnected';
 
-      if (status.secret_provider_available && !status.degraded_mode) {
-        catText = '🟢 Aktiv';
-        catClass = 'status-badge status-connected';
-      } else if (status.degraded_mode) {
-        catText = '🟡 Eingeschränkt';
+      if (!catStatus.enabled) {
+        catText = '⚫ Getrennt';
+        catClass = 'status-badge status-disconnected';
+      } else if (status.degraded_mode || !status.secret_provider_available) {
+        catText = '🟡 Warnung';
         catClass = 'status-badge status-warning';
+      } else if (catStatus.connection_status === 'connected' || catStatus.connected === true) {
+        catText = '🟢 Verbunden';
+        catClass = 'status-badge status-connected';
+      } else if (catStatus.connection_status === 'warning') {
+        catText = '🟡 Warnung';
+        catClass = 'status-badge status-warning';
+      } else {
+        catText = '⚫ Getrennt';
+        catClass = 'status-badge status-disconnected';
       }
 
       this.catStatusEl.textContent = catText;

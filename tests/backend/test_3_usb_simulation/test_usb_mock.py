@@ -8,7 +8,7 @@ import asyncio
 
 import pytest
 
-from src.backend.civ.executor import CIVCommandExecutor, CommandResult
+from src.backend.protocol.civ_protocol import CIVCommandExecutor, CommandResult
 from src.backend.transport import USBConnection
 
 
@@ -128,7 +128,7 @@ class TestUSBSimulation:
 
     def test_bcd_frequency_encoding(self, protocol_file, manufacturer_file):
         """Test: BCD-Frequenz-Kodierung."""
-        from src.backend.civ.executor import CIVCommandExecutor as Executor
+        from src.backend.protocol.civ_protocol import CIVCommandExecutor as Executor
 
         # Teste BCD-Konvertierung
         executor = Executor(protocol_file=protocol_file, manufacturer_file=manufacturer_file)

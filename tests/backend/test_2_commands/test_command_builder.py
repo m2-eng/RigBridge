@@ -6,7 +6,7 @@ Testet den Aufbau von CI-V Frames (Request-Format).
 
 import pytest
 
-from src.backend.civ.executor import CIVCommandExecutor
+from src.backend.protocol.civ_protocol import CIVCommandExecutor
 
 
 @pytest.mark.commands

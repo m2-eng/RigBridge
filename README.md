@@ -15,6 +15,8 @@ RigBridge ist eine offene API‑Plattform zur Steuerung von Funkgeräten über C
 - **Sichere Secret-Verwaltung** - HashiCorp Vault Integration
 - **Echtzeitstatus** - Live-Überwachung USB, CAT, Gerätestatus
 
+![USB-tab](./docs/img/RigBridge_USB-tab.png)
+
 ## 🚀 Quick Start
 
 ### Browser-UI starten (Native auf Windows)

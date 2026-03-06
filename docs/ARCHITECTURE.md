@@ -1,190 +1,232 @@
-# RigBridge - Architektur-Design mit TransportManager
+# RigBridge - Architektur-Design
 
-RigBridge folgt einem **Clean Architecture** Ansatz mit zentraler Ressourcen-Verwaltung:
+RigBridge folgt einem **Clean Architecture** Ansatz mit mehrschichtiger Architektur und zentraler Ressourcen-Verwaltung:
+
+## Gesamtarchitektur
 
 ```mermaid
-flowchart TB
+block
+  columns 2
 
-  id_API(API-Layer)
-  id_CIV(CIVCommandExecutor)
-  id_radio(radio)
+  id_api("API"):1
+  id_wi("Wavelog Integration"):1
+  
+  id_pm_api<[" "]>(y):1
+  id_pm_wl<[" "]>(y):1
 
-  subgraph TransportManager
-  TM_start@{ shape: sm-circ, label: "Small start" }
-  TM_usb(USBConnection)
-  TM_lan(LANconnection)
-  TM_others(...)
-  subgraph TM_genericClass
-  TM_GCfunctions(**methods**
-    connect
-    disconnect
-    callback
-    reconnect
-    send_frame
-    read_response
-  )
-  TM_status(statusHandler)
-  end
+  id_pm("Protocol Manager"):2
 
-  TM_start --> TM_usb
-  TM_start --> TM_lan
-  TM_start --> TM_others
-  TM_usb -..-> TM_genericClass
-  TM_lan -..-> TM_genericClass
-  TM_others -..-> TM_genericClass
-  end
+  id_pm_tm<[" "]>(y):2
 
-  id_API---id_CIV
-  id_CIV---TransportManager
-  TransportManager---id_radio
-```
-## API ([routes.py](../src/backend/api/routes.py))
-- Async Endpoints (/rig/frequency, etc)
-- Keine Semaphore-Code
-- Einfach: await executor.execute_command()
+  id_tm("Transport Manager"):2
 
-Für mehr Informationen: [REST API Dokumentation](API.md)
+  id_tm_radio<[" "]>(y):2
 
-## CIVCommandExecutor ([executor.py](../src/backend/civ/executor.py))
-- Befehlsaufbau & -ausführung
-- ASYNC: execute_command()
-- Nutzt TransportManager automatisch
+  id_radio("Funkgerät"):2
 
-## 🔐 TransportManager: Das Herzstück
-
-TransportManager (transport_manager.py)
-- Zentrale Resource-Verwaltung
-- asyncio.Lock() für Mutual Exclusion
-- Timeouts: Health-Check 5s, API 10s
-- Verhindert Race Conditions
-
-Er ist verantwortlich für:
-
-### 1. Mutual Exclusion (Gegenseitiger Ausschluss)
-```python
-# Nur EIN Befehl zur Zeit hat Zugriff auf USB
-_resource_lock = asyncio.Lock()
-
-# Wenn API-Request und Health-Check gleichzeitig versuchen:
-# ✅ Einer wartet, der andere führt aus
-# ❌ NICHT beide gleichzeitig (würde Datenkorruption verursachen)
 ```
 
-### 2. Timeout-basierte Deadlock-Prevention
-```python
-# Health-Check: max 5 Sekunden (nicht blockieren)
-timeout = self.health_check_timeout  # 5.0s
+## API Layer ([`routes.py`](../src/backend/api/routes.py))
 
-# API-Befehle: max 10 Sekunden (User wartet)
-timeout = self.command_timeout  # 10.0s
+- **REST Endpoints**: `/api/rig/frequency`, `/api/rig/mode`, etc.
+- **Async/Await**: Alle Endpoints sind asynchron
+- **Keine direkte Hardware-Logik**: Delegiert an ProtocolManager
 
-# Falls Lock nicht in Zeit erworben:
-# → HTTPException(503 Service Unavailable)
+**Endpoint-Typen**:
+1. **Generische Command API**: `GET/PUT /api/rig/command` - für alle YAML-Befehle
+2. **Convenience Endpoints**: Spezifische APIs für häufige Operationen (Frequenz, Mode)
+3. **Status/Info**: `/api/status`, `/api/commands`
+
+**Dokumentation**: [API.md](API.md)
+
+---
+
+## Protocol Layer ([`src/backend/protocol/`](../src/backend/protocol/))
+
+**CIVProtocol** implementiert das CI-V-Protokoll für ICOM Funkgeräte.
+
+### Architektur
+
+```mermaid
+block
+  columns 2
+
+  id_pm("Protocol Manager"):2
+  id_pm_civ("CI-V Protocol")
+  id_pm_others("... ")
+  id_tm_base("base protocol"):2
 ```
 
-### 3. Seamless Operation Logging
-```python
-# Jede Operation ist dokumentiert:
-logger.debug(f"Exclusive access acquired for: read_frequency")
-logger.warning(f"USB lock timeout for: set_operating_frequency")
-logger.debug(f"Exclusive access released")
-```
-### connection class
-Noch nicht implementiert.
+### Protocol Manager ([`protocol_manager.py`](../src/backend/protocol/protocol_manager.py))
 
-### USBConnection ([usb_connection.py](../src/backend/transport/usb_connection.py))
-- Low-level Serial I/O
-- Keine Synchronisation nötig
-- Nur geschützer Zugriff durch Lock
+#### Zweck
 
-### LANconnection
-Noch nicht implementiert.
+Der **ProtocolManager** ist die zentrale Verwaltungsschicht für Funkgerät-Protokolle.
+Seine Hauptaufgaben sind:
+- **Protokoll-Abstraktion**: Entkoppelt API von Protokoll-Details (CI-V, CAT, HAMLib)
+- **Command-Dispatch**: Leitet Befehle an aktives Protokoll weiter
+- **Unsolicited Frame Handling**: Empfängt und validiert unsolicited frames vom Transport
+- **Wavelog-Integration**: Vorbereitung für automatische Status-Weiteleitung
+- **Singleton-Pattern**: Systemweit nur eine Instanz
 
-### Erweiterungen
 
-Davon, dass wir TransportManager haben, profitieren wir später:
 
-```python
-# Heute: USB-Transport
-transport = TransportManager(
-    usb_connection=USBConnection(config.usb)
-)
+## Transport Manager ([`transport_manager.py`](../src/backend/transport/transport_manager.py))
 
-# Morgen: LAN-Transport (einfach hinzufügbar!)
-transport = TransportManager(
-    lan_connection=LANConnection(config.lan)
-)
+### Zweck
 
-# Die API bleibt komplett gleich:
-result = await executor.execute_command('read_frequency')
-# TransportManager entscheidet: USB oder LAN? Egal!
-```
+Der **TransportManager** ist die zentrale Verwaltungsschicht für alle physischen Verbindungen zum Funkgerät (USB, später LAN, etc.).
+Seine Hauptaufgaben sind:
+- **Ressourcen-Synchronisation**: Verhindert Race Conditions durch globales `asyncio.Lock()`
+- **Timeout-Management**: Konfigurierbare Wartezeiten für Health-Checks und API-Befehle
+- **Transport-Abstraktion**: Ermöglicht einfachen Wechsel zwischen USB, LAN und anderen Transport-Typen ohne API-Änderungen
 
-## 📊 Beispiel: Wie Race-Conditions verhindert werden
+### Architektur
 
-### VORHER (ohne TransportManager)
-```
-Zeit    API-Thread              Health-Check Thread
-────────────────────────────────────────────────
-T0:     send "get frequency"    
-T1:                             send "health check"
-T2:     read response    ← FALSCH! Antwortet auf Health-Check!
-        Fehler: "Unknown command"
-T3:                             read response ← Got API Frequency!
+```mermaid
+block
+  columns 3
+
+  id_tm("TransportManager"):3
+
+  id_usb("USBConnection")
+  id_lan("LANConnection")
+  id_sim("SIMConnection"):1
+  
+  id_base("BaseTransport"):3
 ```
 
-### NACHHER (mit TransportManager)
-```
-Zeit    API-Thread              Health-Check Thread
-────────────────────────────────────────────────
-T0:     acquire_lock() ✅       acquire_lock() → wartet!
-T1:     send "get frequency"    (blockiert...)
-T2:     read response ✅        
-T3:     release_lock()          acquire_lock() ✅
-T4:                             send "health check"
-T5:                             read response ✅
-        ✅ Beide funktionieren korrekt!
-```
+**Dokumentation**: [TRANSPORT_MANAGER.md](TRANSPORT_MANAGER.md)
 
-## 🔄 Async/Await Pattern
+---
 
-ALLE Befehlsaufrufe müssen `async` sein:
+## Datenfluss-Diagramme
 
-```python
-# ✅ RICHTIG - routes.py
-@router.get("/rig/frequency")
-async def get_frequency() -> FrequencyResponse:
-    executor = get_executor()
-    result = await executor.execute_command('read_operating_frequency')
-    return FrequencyResponse(frequency_hz=result.data['frequency'])
+### Request-Flow (API → Funkgerät)
 
-# ❌ FALSCH - vergessenes await
-@router.get("/rig/frequency")
-async def get_frequency():
-    executor = get_executor()
-    result = executor.execute_command('read_frequency')
-    # → "Coroutine was never awaited" Fehler!
-    return result
+```mermaid
+sequenceDiagram
+    participant API as API Endpoint
+    participant PM as ProtocolManager
+    participant Proto as CIVProtocol
+    participant TM as TransportManager
+    participant USB as USB Connection
+
+    API->>PM: execute_command('read_frequency')
+    PM->>Proto: execute_command()
+    Proto->>Proto: Build CI-V Frame (YAML)
+    Proto->>TM: acquire_lock()
+    TM-->>Proto: Lock acquired
+    Proto->>USB: send(frame)
+    USB->>USB: Write to serial port
+    USB-->>Proto: Response frame
+    Proto->>Proto: Parse response (YAML)
+    Proto->>TM: release_lock()
+    Proto-->>PM: CommandResult
+    PM-->>API: Frequency data
 ```
 
-## 🧪 Tests mit Async
+### Unsolicited Frame Flow (Funkgerät → Handlers)
 
-Alle Tests, die `execute_command()` aufrufen, müssen `async` sein:
+```mermaid
+sequenceDiagram
+    participant Radio as Funkgerät
+    participant USB as USB Connection
+    participant PM as ProtocolManager
+    participant Proto as CIVProtocol
+    participant Handler as Wavelog Handler
 
-```python
-# ✅ RICHTIG
-@pytest.mark.asyncio
-async def test_frequency_read(executor):
-    result = await executor.execute_command('read_operating_frequency')
-    assert result.success
-    assert result.data['frequency'] > 0
-
-# ❌ FALSCH
-def test_frequency_read(executor):
-    result = executor.execute_command('read_operating_frequency')
-    # → RuntimeWarning: coroutine was never awaited
+    Radio->>USB: Unsolicited Frame (Frequency Change)
+    USB->>USB: Background Reader empfängt Frame
+    USB->>PM: handle_unsolicited_frame(raw_bytes)
+    PM->>Proto: is_valid_radio_id(frame)?
+    Proto-->>PM: True
+    PM->>Proto: handle_unsolicited_frame(frame)
+    Proto->>Proto: Parse frame (CMD/SUBCMD/Data)
+    Proto->>Handler: _notify_handlers(parsed_data)
+    Handler->>Handler: Forward to Wavelog API
 ```
+
+---
+
+---
+
+## Protocol Layer - CI-V Implementierung
+
+**Datei**: [`src/backend/protocol/civ_protocol.py`](../src/backend/protocol/civ_protocol.py)
+
+**Struktur**: Alles in einer Datei:
+- `ProtocolParser` - YAML-Parser für Protokolldefinitionen
+- `CIVCommandExecutor` - Frame-Building und Response-Parsing
+- `CIVProtocol` - BaseProtocol-Implementation (wraps Executor)
+
+**Design**: CIVProtocol delegiert an internen CIVCommandExecutor für Befehlsausführung und Parsing.
+
+---
+
+## Konfiguration
+
+**Hauptdatei**: [`config.json`](../config.json)
+
+**Struktur**:
+```json
+{
+  "device": {
+    "name": "IC-905",
+    "protocol": "civ"
+  },
+  "usb": {
+    "port": "COM4",
+    "baud_rate": 19200,
+    "timeout": 1.0
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000
+  }
+}
+```
+
+---
+
+## Testing-Strategie
+
+### Test-Hierarchie
+
+1. **Unit Tests**: Isolierte Komponenten
+   - `test_protocol_manager.py` - ProtocolManager Tests
+   - `test_civ_protocol.py` - CIVProtocol Tests
+   - `test_api_config.py` - Configuration Tests
+
+2. **Integration Tests**: Komponenten-Zusammenspiel
+   - `test_integration.py` - End-to-End Tests ohne Hardware
+   - `test_api_frontend.py` - API Endpoint Tests
+
+3. **Simulation Tests**: Ohne echte Hardware
+   - `test_3_usb_simulation/` - USB-Simulation
+
+4. **Hardware Tests**: Mit echtem Funkgerät
+   - `test_4_usb_real_hardware/` - Real-Hardware Tests (manuell)
+
+**Test-Ausführung**:
+```bash
+# Alle Tests ohne Hardware
+pytest tests/backend -m "not usb_real"
+
+# Nur Unit Tests
+pytest tests/backend -m "unit"
+
+# Protocol Manager Tests
+pytest tests/backend/test_protocol_manager.py -v
+```
+
+---
 
 ## 🔗 Verwandte Dokumentation
 
+- [PROTOCOL_MANAGER.md](PROTOCOL_MANAGER.md) - Protocol Manager Details
+- [TRANSPORT_MANAGER.md](TRANSPORT_MANAGER.md) - Transport Manager Details
+- [API.md](API.md) - REST API Dokumentation
 - [BACKEND_DEVELOPMENT.md](BACKEND_DEVELOPMENT.md) - Entwicklungsanleitung
+- [USB.md](USB.md) - USB-Verbindung Details
+- [WAVELOG_CAT_IMPLEMENTATION.md](WAVELOG_CAT_IMPLEMENTATION.md) - Wavelog Integration

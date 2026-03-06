@@ -145,7 +145,7 @@ def create_app(
     app_version = get_version()
     app = FastAPI(
         title='RigBridge API',
-        description='REST API für Amateurfunk-Geräte-Steuerung',
+        description='REST API für Funkgerät-API mit Wavelog-Anbindung (DD0MM)',
         version=app_version,
         docs_url='/api/docs',
         redoc_url=None,  # Wir erstellen einen custom ReDoc-Endpoint
