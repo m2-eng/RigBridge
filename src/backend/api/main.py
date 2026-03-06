@@ -57,8 +57,11 @@ def create_app(
         """Lifespan-Handler für Startup/Shutdown Events."""
         # Startup: Starte Background-Tasks
         try:
-            asyncio.create_task(start_usb_health_check_task())
-            logger.info('USB health check task started')
+            if config.api.health_check_enabled:
+                asyncio.create_task(start_usb_health_check_task())
+                logger.info('USB health check task started')
+            else:
+                logger.info('USB health check task disabled by config')
         except Exception as e:
             logger.error(f'Failed to start USB health check task: {e}')
 

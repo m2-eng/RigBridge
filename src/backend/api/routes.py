@@ -327,6 +327,7 @@ class USBConfigUpdate(BaseModel):
 class APIConfigUpdate(BaseModel):
     host: Optional[str] = None
     port: Optional[int] = None
+    health_check_enabled: Optional[bool] = None
     enable_https: Optional[bool] = None
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
@@ -894,6 +895,8 @@ def create_router() -> APIRouter:
         if 'api' in payload:
             api_values = payload['api']
             log_level_changed = False
+            health_check_changed = False
+            new_health_check_enabled = config.api.health_check_enabled
 
             if 'log_level' in api_values:
                 try:
@@ -917,7 +920,18 @@ def create_router() -> APIRouter:
 
             for key, value in api_values.items():
                 if key != 'log_level':
+                    if key == 'health_check_enabled':
+                        health_check_changed = (config.api.health_check_enabled != value)
+                        new_health_check_enabled = value
                     setattr(config.api, key, value)
+
+            if health_check_changed:
+                if new_health_check_enabled:
+                    logger.info('Health check aktiviert - starte Background-Task')
+                    await start_usb_health_check_task()
+                else:
+                    logger.info('Health check deaktiviert - stoppe Background-Task')
+                    await stop_usb_health_check_task()
 
         if 'wavelog' in payload:
             for key, value in payload['wavelog'].items():

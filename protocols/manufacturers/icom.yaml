@@ -126,9 +126,9 @@ data_types:
   #     example: "44.5000 MHz → 00 50 44"
 
   bcd5_freq:
-    name: "5-Byte BCD Frequency"
+    name: "frequency"
     size: 5
-    description: "BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz, Bereich 0–9.999999999 GHz"
+    description: "5-Byte BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz, Bereich 0–9.999999999 GHz"
     bytes:
       - index: 0
         high_nibble: { place: "10Hz",   weight: 10 }
@@ -151,9 +151,9 @@ data_types:
       example: "144.500 MHz → 00 00 50 44 01"
 
   bcd6_freq:
-    name: "6-Byte BCD Frequency"
+    name: "frequency"
     size: 6
-    description: "BCD-kodierte Frequenz (12 Dezimalstellen), Auflösung 1 Hz, Bereich 0–99.999999999 GHz (10-GHz-Band)"
+    description: "6-Byte BCD-kodierte Frequenz (12 Dezimalstellen), Auflösung 1 Hz, Bereich 0–99.999999999 GHz (10-GHz-Band)"
     bytes:
       - index: 0
         high_nibble: { place: "10Hz",   weight: 10 }

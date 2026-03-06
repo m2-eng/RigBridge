@@ -37,6 +37,7 @@ class APIConfig:
     """REST-API-Konfiguration."""
     host: str = '127.0.0.1'
     port: int = 8080
+    health_check_enabled: bool = True
     enable_https: bool = False
     cert_file: Optional[str] = None
     key_file: Optional[str] = None

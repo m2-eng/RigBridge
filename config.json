@@ -11,6 +11,7 @@
   "api": {
     "host": "127.0.0.1",
     "port": 8080,
+    "health_check_enabled": true,
     "enable_https": false,
     "cert_file": null,
     "key_file": null,

@@ -24,6 +24,7 @@ def _write_config(path: Path) -> None:
                 'api': {
                     'host': '127.0.0.1',
                     'port': 8080,
+                    'health_check_enabled': True,
                     'enable_https': False,
                     'cert_file': None,
                     'key_file': None,
@@ -105,6 +106,22 @@ def test_put_config_invalid_log_level_returns_error_contract(tmp_path: Path):
     assert payload['error'] is True
     assert payload['code'] == 'HTTP_422'
     assert 'Invalid log_level' in payload['message']
+
+
+def test_put_config_health_check_toggle_persists_changes(tmp_path: Path):
+    config_path = tmp_path / 'config.json'
+    _write_config(config_path)
+
+    app = create_app(config_path=config_path)
+    client = TestClient(app)
+
+    response = client.put('/api/config', json={'api': {'health_check_enabled': False}})
+
+    assert response.status_code == 200
+    assert response.json()['success'] is True
+
+    updated = json.loads(config_path.read_text(encoding='utf-8'))
+    assert updated['api']['health_check_enabled'] is False
 
 
 def test_status_reports_degraded_mode_on_secret_provider_failure(tmp_path: Path):

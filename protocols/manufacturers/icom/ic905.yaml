@@ -3,12 +3,6 @@
 # Based on official Icom CI-V Protocol Reference
 # All commented commands are not yet reviewed
 
-# command not yet implemented
-# 1C 03
-# 1E 01
-# 1E 03
-# 0E Ax
-
 protocol:
   name: "Icom IC-905"
   model: "ic905"
@@ -35,35 +29,28 @@ protocol:
     # ========================================================================
     # TRANSCEIVE COMMANDS (0x00-0x01)
     # ========================================================================
-    # send_frequency_data:
-    #   cmd: 0x00
-    #   subcmd: null
-    #   description: "Send frequency data (transceive)"
-    #   request:
-    #     alternatives:
-    #       - name: "frequency"
-    #         type: "bcd5_freq"
-    #         description: "Operating frequency to send"
-    #       - name: "frequency"
-    #         type: "bcd6_freq"
-    #         description: "Operating frequency to send (10 GHz band)"
-    #   response:
-    #       - name: "status"
-    #         type: "status_ok_ng"
-    #         description: "Command execution status"
+    receive_frequency_data:
+      cmd: 0x00
+      subcmd: null
+      description: "Receive operating frequency"
+      request: []
+      response:
+        - name: "frequency"
+          type: "bcd5_freq"
+          description: "Receive the operating frequency in BCD"
+        - name: "frequency"
+          type: "bcd6_freq"
+          description: "Receive the operating frequency in BCD (10 GHz band)"
 
-    # send_mode_data:
-    #   cmd: 0x01
-    #   subcmd: null
-    #   description: "Send mode data (transceive)"
-    #   request:
-    #     - name: "operating mode"
-    #       type: "operating_mode"
-    #       description: "Send the mode data (transceive)"
-    #   response:
-    #     - name: "status"
-    #       type: "status_ok_ng"
-    #       description: "Command execution status"
+    receive_mode_data:
+      cmd: 0x01
+      subcmd: null
+      description: "Receive operating mode"
+      request: []
+      response:
+        - name: "operating mode"
+          type: "operating_mode"
+          description: "Receive the operating mode and filter setting"
 
     # ========================================================================
     # READ COMMANDS (0x02-0x04)
@@ -98,7 +85,7 @@ protocol:
       description: "Read operating mode"
       request: []
       response:
-        - name: "operating mode"
+        - name: "operating_mode"
           type: "operating_mode"
           description: "Read the operating mode and filter setting"
 
@@ -124,7 +111,7 @@ protocol:
     #   subcmd: null
     #   description: "Set operating mode and filter"
     #   request:
-    #     - name: "operating mode"
+    #     - name: "operating_mode"
     #       type: "operating_mode"
     #       description: "Set the operating mode and filter setting"
     #   response: *status_ok_ng

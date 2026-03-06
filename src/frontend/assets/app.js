@@ -14,9 +14,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Theme initialisieren
   themeSwitcher.init();
 
-  // Status-Widget starten
-  statusWidget.start();
-
   // Config laden
   try {
     await configManager.loadConfig();
@@ -36,6 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // UI mit Config-Werten füllen
   await populateFormFields();
 
+  // Status-Polling entsprechend Konfiguration starten/stoppen
+  syncStatusPollingWithConfig();
+
   // Config in Info-Tab anzeigen
   displayConfigJson();
 
@@ -47,6 +47,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   console.info('RigBridge UI initialized');
 });
+
+function syncStatusPollingWithConfig() {
+  try {
+    const config = configManager.getConfig();
+    const pollingEnabled = config?.api?.health_check_enabled !== false;
+
+    if (pollingEnabled) {
+      statusWidget.start();
+    } else {
+      statusWidget.stop();
+    }
+  } catch (error) {
+    console.warn('Could not sync status polling state, using default on:', error);
+    statusWidget.start();
+  }
+}
 
 // ============================================================================
 // TAB NAVIGATION
@@ -192,6 +208,11 @@ async function populateFormFields() {
       const apiLoglevel = document.getElementById('api-loglevel');
       if (apiLoglevel) apiLoglevel.value = config.api.log_level || 'INFO';
 
+      const apiHealthCheckEnabled = document.getElementById('api-health-check-enabled');
+      if (apiHealthCheckEnabled) {
+        apiHealthCheckEnabled.checked = config.api.health_check_enabled !== false;
+      }
+
       const apiHttps = document.getElementById('api-https');
       if (apiHttps) apiHttps.checked = config.api.enable_https || false;
 
@@ -217,20 +238,25 @@ async function populateFormFields() {
 
     // Info-Tab
     try {
-      const status = await api.getStatus();
       const apiVersion = document.getElementById('api-version');
-      if (apiVersion) apiVersion.textContent = status.api_version || '-';
-
       const infoDevice = document.getElementById('info-device');
-      if (infoDevice) infoDevice.textContent = config.device?.name || '-';
-
       const infoPort = document.getElementById('info-port');
+      const infoStatus = document.getElementById('info-status');
+
+      if (infoDevice) infoDevice.textContent = config.device?.name || '-';
       if (infoPort) infoPort.textContent = config.usb?.port || '-';
 
-      const infoStatus = document.getElementById('info-status');
-      if (infoStatus) infoStatus.textContent = status.usb_connected ? 'Connected' : 'Disconnected';
+      const pollingEnabled = config.api?.health_check_enabled !== false;
+      if (!pollingEnabled) {
+        if (apiVersion) apiVersion.textContent = '-';
+        if (infoStatus) infoStatus.textContent = 'Status-Polling deaktiviert';
+      } else {
+        const status = await api.getStatus();
+        if (apiVersion) apiVersion.textContent = status.api_version || '-';
+        if (infoStatus) infoStatus.textContent = status.usb_connected ? 'Connected' : 'Disconnected';
+      }
 
-      console.info('Info tab populated with status');
+      console.info('Info tab populated with status/config');
     } catch (statusError) {
       console.warn('Could not fetch status, but forms still populated:', statusError);
     }
@@ -527,6 +553,7 @@ async function submitAPIConfig() {
       host: document.getElementById('api-host').value,
       port: parseInt(document.getElementById('api-port').value),
       log_level: document.getElementById('api-loglevel').value,
+      health_check_enabled: document.getElementById('api-health-check-enabled').checked,
       enable_https: document.getElementById('api-https').checked,
     };
 
@@ -543,6 +570,9 @@ async function submitAPIConfig() {
 
     // Aktualisiere die Formulare mit den neuesten Werten
     await populateFormFields();
+
+    // Polling sofort entsprechend neuem Wert anpassen
+    syncStatusPollingWithConfig();
 
     showMessage('api-message', 'API configuration saved successfully!', 'success');
   } catch (error) {
