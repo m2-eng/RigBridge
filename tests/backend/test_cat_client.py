@@ -287,7 +287,7 @@ class TestWebSocketSubscription:
         callback = MagicMock()
 
         # Mock WebSocket-Loop, damit er sofort beendet
-        with patch.object(client, '_ws_listen_loop', return_value=asyncio.sleep(0)):
+        with patch.object(client, '_ws_listen_loop', new_callable=AsyncMock):
             await client.subscribe_gate_status(callback)
 
             assert client._ws_task is not None
@@ -307,7 +307,7 @@ class TestWebSocketSubscription:
         """Test: Zweite Subscription wirft Fehler."""
         callback = MagicMock()
 
-        with patch.object(client, '_ws_listen_loop', return_value=asyncio.sleep(0)):
+        with patch.object(client, '_ws_listen_loop', new_callable=AsyncMock):
             await client.subscribe_gate_status(callback)
 
             with pytest.raises(RuntimeError, match='already active'):

@@ -75,7 +75,7 @@ class DeviceConfig:
     def get_manufacturer_path(self) -> Path:
         """Konstruiert den vollständigen Pfad zur Herstellerdatei."""
         return Path(
-            f'protocols/manufacturers/{self.manufacturer}/{self.manufacturer}.yaml'
+            f'protocols/manufacturers/{self.manufacturer}.yaml'
         )
 
     def get_protocol_path(self) -> Path:
