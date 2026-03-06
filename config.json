@@ -36,6 +36,8 @@
   "device": {
     "name": "ICOM IC905",
     "manufacturer": "icom",
-    "protocol_file": "ic905"
+    "protocol_file": "ic905",
+    "controller_address": "0xE0",
+    "radio_address": "0xA4"
   }
 }

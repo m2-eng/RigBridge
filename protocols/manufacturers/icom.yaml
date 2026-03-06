@@ -206,23 +206,19 @@ data_types:
   #     physical_min: 0.0
   #     physical_max: 10.0
 
-  # uint8_percent:
-  #   name: "Percentage 0–100%"
-  #   size: 1
-  #   description: "Prozentwert 0–100%, als 0x00–0xFF linear kodiert (0x00=0%, 0xFF=100%)"
-  #   encoding:
-  #     method: "linear_scaled"
-  #   scaling:
-  #     type: "linear"
-  #     unit: "%"
-  #     raw:      { min: 0,   max: 255   }
-  #     physical: { min: 0.0, max: 100.0 }
-  #   range:
-  #     raw_min: 0
-  #     raw_max: 255
-  #     physical_min: 0.0
-  #     physical_max: 100.0
-  #     physical_unit: "%"
+  uint8_percent:
+    size: 2
+    description: "Prozentwert 0–100%, als 0x0000–0xFFFF linear kodiert (0x0000=0%, 0xFFFF=100%)"
+    encoding: "linear_scaled"
+    scaling:
+      raw:      [0, 255]
+      physical: [0.0, 100.0]
+    range:
+      raw_min: 0
+      raw_max: 255
+      physical_min: 0.0
+      physical_max: 100.0
+      physical_unit: "%"
 
   # uint8_percent_pos_neg:
   #   name: "Signed Percentage -100%–+100%"

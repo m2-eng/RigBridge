@@ -194,7 +194,15 @@ async function populateFormFields() {
 
     // Device-Form
     if (config.device) {
-      // wird später mit der geladenen Gerätelist gefüllt
+      const controllerAddr = document.getElementById('device-controller-address');
+      if (controllerAddr) {
+        controllerAddr.value = formatAddressHex(config.device.controller_address, 224);
+      }
+      
+      const radioAddr = document.getElementById('device-radio-address');
+      if (radioAddr) {
+        radioAddr.value = formatAddressHex(config.device.radio_address, 164);
+      }
     }
 
     // API-Form
@@ -338,6 +346,14 @@ function setupFormHandlers() {
   // Device-Form
   const deviceForm = document.getElementById('device-form');
   if (deviceForm) {
+    const deviceSelect = document.getElementById('device-select');
+    if (deviceSelect) {
+      deviceSelect.addEventListener('change', () => {
+        // Beim Gerätewechsel immer YAML-Defaults als Standard übernehmen.
+        applyDeviceDefaultsFromSelection(true);
+      });
+    }
+
     deviceForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       await submitDeviceConfig();
@@ -491,6 +507,8 @@ async function loadDevices() {
         name: device.name,
         manufacturer: device.manufacturer,
         protocol_file: device.protocol_file,
+        default_controller: device.default_controller,
+        default_radio: device.default_radio,
       });
       option.textContent = device.name;
       select.appendChild(option);
@@ -499,23 +517,73 @@ async function loadDevices() {
     // Markiere aktuelles Gerät
     const config = configManager.getConfig();
     if (config.device) {
-      const currentValue = JSON.stringify({
-        name: config.device.name,
-        manufacturer: config.device.manufacturer,
-        protocol_file: config.device.protocol_file,
-      });
-
       for (const option of select.options) {
-        if (option.value === currentValue) {
+        if (!option.value) {
+          continue;
+        }
+
+        const optionData = JSON.parse(option.value);
+        if (
+          optionData.name === config.device.name
+          && optionData.manufacturer === config.device.manufacturer
+          && optionData.protocol_file === config.device.protocol_file
+        ) {
           option.selected = true;
           break;
         }
       }
     }
 
+    // Falls noch keine Adresse gesetzt ist, nutze YAML-Defaults des gewählten Geräts.
+    applyDeviceDefaultsFromSelection(false);
+
     console.info('Devices loaded successfully');
   } catch (error) {
     console.error('Failed to load devices:', error);
+  }
+}
+
+function formatAddressHex(value, fallback) {
+  const numeric = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return `0x${numeric.toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+function parseAddressInput(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    throw new Error('Address value is required');
+  }
+
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 255) {
+    throw new Error(`Invalid address '${text}'. Use 0x00-0xFF or 0-255.`);
+  }
+
+  return parsed;
+}
+
+function applyDeviceDefaultsFromSelection(force = false) {
+  const select = document.getElementById('device-select');
+  if (!select || !select.value) {
+    return;
+  }
+
+  try {
+    const selectedDevice = JSON.parse(select.value);
+    const controllerAddr = document.getElementById('device-controller-address');
+    const radioAddr = document.getElementById('device-radio-address');
+
+    const defaultController = selectedDevice.default_controller ?? 224;
+    const defaultRadio = selectedDevice.default_radio ?? 164;
+
+    if (controllerAddr && (force || !controllerAddr.value)) {
+      controllerAddr.value = formatAddressHex(defaultController, 224);
+    }
+    if (radioAddr && (force || !radioAddr.value)) {
+      radioAddr.value = formatAddressHex(defaultRadio, 164);
+    }
+  } catch (error) {
+    console.warn('Could not apply device defaults from selection:', error);
   }
 }
 
@@ -527,7 +595,24 @@ async function submitDeviceConfig() {
       return;
     }
 
-    const deviceData = JSON.parse(select.value);
+    const selectedDevice = JSON.parse(select.value);
+    const deviceData = {
+      name: selectedDevice.name,
+      manufacturer: selectedDevice.manufacturer,
+      protocol_file: selectedDevice.protocol_file,
+    };
+    
+    // Adressen aus den Eingabefeldern hinzufügen
+    const controllerAddr = document.getElementById('device-controller-address');
+    const radioAddr = document.getElementById('device-radio-address');
+    
+    if (controllerAddr) {
+      deviceData.controller_address = parseAddressInput(controllerAddr.value);
+    }
+    if (radioAddr) {
+      deviceData.radio_address = parseAddressInput(radioAddr.value);
+    }
+    
     await configManager.saveSection('device', deviceData);
 
     // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren

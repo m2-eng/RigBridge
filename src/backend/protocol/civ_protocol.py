@@ -101,7 +101,7 @@ class ProtocolParser:
         root = protocol.get('protocol', protocol)
 
         # Frame-/Adress-Konfiguration laden
-        frame_cfg = root.get('config', {}).get('frame', {})
+        frame_cfg = root.get('frame', {})
         addresses = root.get('addresses', {})
         preamble = frame_cfg.get('preamble', [0xFE, 0xFE])
         if isinstance(preamble, list) and len(preamble) >= 2:
@@ -619,22 +619,11 @@ class CIVCommandExecutor:
             elif encoding_method == 'enum':
                 return_data[name] = self._decode_enum(byte_def, payload)
 
+            elif encoding_method == 'linear_scaled':
+                return_data = self._decode_linear_scaled(item, payload)
+                return return_data, None
+
             return {'raw_data': payload.hex()}, None
-
-    @staticmethod
-    def _decode_enum(definition: Dict[str, Any], payload: bytes) -> str:
-        """Dekodiert einen Enum-Wert basierend auf Definition und Payload."""
-        index = definition.get('index')
-        length = definition.get('length', 1)
-        enum_def = definition.get('values', {})
-
-        raw_value = payload[index] if length == 1 else payload[index:index+length]
-        if length == 1:
-            decoded_value = enum_def.get(raw_value, f'UNKNOWN(0x{raw_value:02X})')
-        else:
-            decoded_value = enum_def.get(raw_value.hex(), f'UNKNOWN(0x{raw_value.hex()})')
-
-        return decoded_value
 
     @staticmethod
     def _decode_bcd(item: Dict[str, Any], payload: bytes) -> int:
@@ -660,6 +649,44 @@ class CIVCommandExecutor:
 
 
         return {item.get('name', 'bcd_value'): value}
+
+    @staticmethod
+    def _decode_enum(definition: Dict[str, Any], payload: bytes) -> str:
+        """Dekodiert einen Enum-Wert basierend auf Definition und Payload."""
+        index = definition.get('index')
+        length = definition.get('length', 1)
+        enum_def = definition.get('values', {})
+
+        raw_value = payload[index] if length == 1 else payload[index:index+length]
+        if length == 1:
+            decoded_value = enum_def.get(raw_value, f'UNKNOWN(0x{raw_value:02X})')
+        else:
+            decoded_value = enum_def.get(raw_value.hex(), f'UNKNOWN(0x{raw_value.hex()})')
+
+        return decoded_value
+
+    @staticmethod
+    def _decode_linear_scaled(item: Dict[str, Any], payload: bytes) -> Dict[str, Any]:
+        """Dekodiert einen linear skalierten Wert basierend auf Definition und Payload."""
+        scaling = item.get('scaling', {})
+        points_raw = scaling.get('raw', [])
+        points_physical = scaling.get('physical', [])
+
+        if len(points_raw) != len(points_physical):
+            logger.error('Scaling definition error: raw and physical points length mismatch')
+            return {item.get('name', 'scaled_value'): None}
+
+        raw_value = int.from_bytes(payload, byteorder='big')  # Annahme: big-endian, kann je nach Definition variieren
+        scaled_value = None
+        for i in range(len(points_raw) - 1):
+            if points_raw[i] <= raw_value <= points_raw[i + 1]:
+                # Linear interpolation
+                x0, y0 = points_raw[i], points_physical[i]
+                x1, y1 = points_raw[i + 1], points_physical[i + 1]
+                scaled_value = y0 + (raw_value - x0) * (y1 - y0) / (x1 - x0)
+                break
+
+        return {item.get('name', 'scaled_value'): scaled_value}
 
     @staticmethod
     def _frequency_to_bcd(frequency_hz: int) -> bytes:
@@ -905,6 +932,15 @@ class CIVProtocol(BaseProtocol):
     # ========================================================================
     # CI-V Spezifische Methoden
     # ========================================================================
+
+    def set_addresses(self, controller_address: int, radio_address: int) -> None:
+        """Setzt Controller- und Radio-Adresse zur Laufzeit (override YAML-Defaults)."""
+        self._parser.controller_addr = int(controller_address) & 0xFF
+        self._parser.radio_addr = int(radio_address) & 0xFF
+        logger.info(
+            f'CI-V addresses configured: controller=0x{self._parser.controller_addr:02X}, '
+            f'radio=0x{self._parser.radio_addr:02X}'
+        )
 
     def get_radio_address(self) -> int:
         """

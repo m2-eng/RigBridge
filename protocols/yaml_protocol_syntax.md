@@ -20,7 +20,9 @@ Diese Aufteilung ermöglicht:
 
 ## 1. Protokoll-Grundstruktur
 
-### 1.1 Grundgerüst
+### 1.1 Grundgerüst des Schemas
+
+Die YAML-Protokolldefinition besteht aus einem Wurzel-Element `protocol` mit folgenden Hauptbestandteilen:
 
 ```yaml
 protocol:
@@ -28,30 +30,70 @@ protocol:
   model: "ic905"
   manufacturer: "Icom"
   description: "Multi-band transceiver with complete CI-V command set"
-  
-  config:
-    timeouts:
-      command_response: 1.0      # Timeout in Sekunden für Befehlsantworten
-      session_idle: 300.0         # Session-Leerlauf-Timeout in Sekunden
-    
-    frame:
-      preamble: [0xFE, 0xFE]     # Frame-Startbytes (ICOM-Standard)
-      terminator: 0xFD            # Frame-Endbyte
-      default_controller: 0xE0    # Controller-Adresse (Computer)
-      default_radio: 0xAC         # Funkgeräte-Adresse (IC-905)
-  
-  addresses:
-    controller: 0xE0
-    radio: 0xAC
+
+  frame:
+    preamble: [0xFE, 0xFE]
+    terminator: 0xFD
+    default_controller: 0xE0
+    default_radio: 0xAC
+
+  commands:
+    read_operating_frequency:
+      cmd: 0x03
+      # ... weitere Befehlsdefinitionen
 ```
 
-**Wichtige Felder:**
-- **name, model, manufacturer, description**: Metadaten zur Identifikation
-- **timeouts**: Steuert das Kommunikationsverhalten
-- **frame**: Definiert das CI-V-Frame-Format (ICOM nutzt Präambel 0xFE 0xFE, Terminator 0xFD)
-- **addresses**: CI-V-Adressen für Gerät und Controller
+### 1.2 Protocol-Element (Wurzelebene)
+
+Das `protocol`-Element enthält die Metadaten und strukturellen Definitionen für ein Funkgerätemodell:
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `name` | string | Ja | Vollständiger Name des Funkgeräts (z.B. "Icom IC-905") |
+| `model` | string | Ja | Modellbezeichnung, wird als Dateiname verwendet (z.B. "ic905") |
+| `manufacturer` | string | Ja | Hersteller des Geräts (z.B. "Icom", "Yaesu", "Kenwood") |
+| `description` | string | Nein | Kurzbeschreibung des Geräts und seiner Fähigkeiten |
+| `frame` | object | Ja | Definiert die Frame-Struktur der seriellen Kommunikation |
+| `commands` | object | Ja | Sammlung aller verfügbaren Befehle für dieses Gerät |
+
+### 1.3 Frame-Element (CI-V Frame-Struktur)
+
+Das `frame`-Element definiert das Kommunikationsprotokoll auf Byte-Ebene:
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `preamble` | array[int] | Ja | Frame-Startbytes, die jeder Nachricht vorangestellt werden<br/>Beispiel: `[0xFE, 0xFE]` (ICOM-Standard) |
+| `terminator` | int | Ja | Frame-Endbyte, das jede Nachricht abschließt<br/>Beispiel: `0xFD` (ICOM-Standard) |
+| `default_controller` | int | Ja | Standard-Adresse des steuernden Computers<br/>Beispiel: `0xE0` (ICOM-Standard für PC) |
+| `default_radio` | int | Ja | Standard-Adresse des Funkgeräts<br/>Beispiel: `0xAC` (IC-905), `0x94` (IC-7300) |
+
+**Hinweis zu Adressen:**  
+Die tatsächlich verwendeten CI-V-Adressen (`controller` und `radio`) werden nicht in der YAML-Datei, sondern in der `config.json` gespeichert. Dadurch können Benutzer diese über die Web-Oberfläche konfigurieren, falls vom Standard abweichende Adressen benötigt werden. Die `default_*`-Felder im Frame dienen nur als Referenzwerte.
+
+### 1.4 Commands-Element (Befehlssammlung)
+
+Das `commands`-Element ist ein Objekt, dessen Schlüssel die individuellen Befehlsnamen sind. Jeder Befehlsname (z.B. `read_operating_frequency`, `set_af_level`) definiert einen CI-V-Befehl mit seiner spezifischen Struktur.
+
+```yaml
+commands:
+  read_operating_frequency:
+    cmd: 0x03
+    subcmd: null
+    description: "Read operating frequency"
+    # ... weitere Befehlsdetails
+
+  set_af_level:
+    cmd: 0x14
+    subcmd: 0x01
+    description: "Set AF level"
+    # ... weitere Befehlsdetails
+```
+
+Die Befehlsnamen folgen der Konvention `snake_case` und sollten die Funktion des Befehls klar beschreiben. Die detaillierte Struktur einzelner Befehle wird im Abschnitt [3. Befehle](#3-befehle-ic905yaml) beschrieben
 
 ---
+
+# Alles nachfolgende ist alt und wird noch überarbeietet, zum Teil inkorrekt
 
 ## 2. Datentypen (icom.yaml)
 
@@ -61,134 +103,11 @@ Datentypen definieren **wie Binärdaten für bestimmte Parameter kodiert/dekodie
 
 ### 2.2 Struktur
 
-```yaml
-data_types:
-  bcd5_freq:
-    name: "5-Byte BCD Frequency"
-    size: 5
-    description: "BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz"
-    resolution_hz: 1
-    bytes:
-      - index: 0
-        high_nibble: { place: "10Hz",   weight_hz: 10 }
-        low_nibble:  { place: "1Hz",    weight_hz: 1  }
-      - index: 1
-        high_nibble: { place: "1kHz",   weight_hz: 1000 }
-        low_nibble:  { place: "100Hz",  weight_hz: 100  }
-      - index: 2
-        high_nibble: { place: "100kHz", weight_hz: 100000 }
-        low_nibble:  { place: "10kHz",  weight_hz: 10000  }
-      - index: 3
-        high_nibble: { place: "10MHz",  weight_hz: 10000000 }
-        low_nibble:  { place: "1MHz",   weight_hz: 1000000  }
-      - index: 4
-        high_nibble: { place: "1GHz",   weight_hz: 1000000000 }
-        low_nibble:  { place: "100MHz", weight_hz: 100000000  }
-    encoding:
-      method: "bcd_packed"
-      byte_order: "little_endian"
-      example: "144.500 MHz → 00 00 50 44 01"
-```
 
-**Warum strukturiert statt Freitext?**
-
-Das frühere Schema nutzte eine einfache String-Notation:
-```yaml
-# ALT – nicht maschinenlesbar
-format:
-  byte0: "10Hz digit | 1Hz digit"
-```
-Das `|`-Zeichen hatte keine definierte Semantik und konnte nicht automatisch geparst werden.
-Das aktuelle `bytes`-Format macht jede Nibble-Position explizit und maschinenlesbar:
-- **`index`**: Byte-Position (0 = niederwertigstes Byte, `little_endian`)
-- **`high_nibble` / `low_nibble`**: oberes / unteres Halbbyte des Bytes
-- **`place`**: Lesbare Bezeichnung der Stelle (z. B. `"10Hz"`)
-- **`weight_hz`**: Numerischer Stellenwert in Hz — direkt vom Parser nutzbar
-
-**Wichtige Felder:**
-- **name**: Menschenlesbarer Typname
-- **size**: Länge in Bytes
-- **description**: Zweck, Einschränkungen und Bereich
-- **resolution_hz**: Kleinste darstellbare Frequenzänderung in Hz
-- **bytes**: Strukturierte Nibble-Beschreibung (maschinenlesbar)
-- **encoding**: Kodierungsmethode und Beispiel für Entwickler
-
-### 2.3 Gängige Datentypen
-
-#### Binary Coded Decimal (BCD)
-
-| Typ | Größe | Verwendung | Bereich | Auflösung |
-|------|------|---------|---------|-----------|
-| `bcd3_freq` | 3 bytes | Offset-Frequenzen | 0 – 99.9999 MHz | 100 Hz |
-| `bcd5_freq` | 5 bytes | Haupt-Frequenzen | 0 – 9.999999999 GHz | 1 Hz |
-| `bcd6_freq` | 6 bytes | Erw. Frequenzen (10-GHz-Band) | 0 – 99.999999999 GHz | 1 Hz |
-
-**Beispiel**: 144.500 MHz als BCD5
-```
-Frequenz: 144.500 MHz = 144.500.000 Hz
-BCD-Bytes: 00 00 50 44 01
-  byte[0]: 0x00  high_nibble=10Hz=0,  low_nibble=1Hz=0
-  byte[1]: 0x00  high_nibble=1kHz=0,  low_nibble=100Hz=0
-  byte[2]: 0x50  high_nibble=100kHz=5, low_nibble=10kHz=0  → 500.000 Hz
-  byte[3]: 0x44  high_nibble=10MHz=4, low_nibble=1MHz=4    → 44.000.000 Hz
-  byte[4]: 0x01  high_nibble=1GHz=0,  low_nibble=100MHz=1  → 100.000.000 Hz
-Summe: 100.000.000 + 44.000.000 + 500.000 = 144.500.000 Hz ✓
-```
 
 #### Skalierungstypen
 
-```yaml
-uint8_percent:
-  name: "Percentage 0–100%"
-  size: 1
-  description: "Prozentwert 0–100%, als 0x00–0xFF linear kodiert"
-  encoding:
-    method: "linear_scaled"
-  scaling:
-    type: "linear"
-    unit: "%"
-    raw:      { min: 0,   max: 255   }
-    physical: { min: 0.0, max: 100.0 }
-  range:
-    raw_min: 0
-    raw_max: 255
-    physical_min: 0.0
-    physical_max: 100.0
-    physical_unit: "%"
-
-uint8_cw_pitch:
-  name: "CW Pitch Frequency 300–900 Hz"
-  size: 1
-  description: "CW-Tonfrequenz 300–900 Hz, als 0x00–0xFF linear kodiert"
-  encoding:
-    method: "linear_scaled"
-  scaling:
-    type: "linear"
-    unit: "Hz"
-    raw:      { min: 0,     max: 255   }
-    physical: { min: 300.0, max: 900.0 }
-  range:
-    raw_min: 0
-    raw_max: 255
-    physical_min: 300.0
-    physical_max: 900.0
-    physical_unit: "Hz"
-```
-
-**Kernkonzept Scaling**: Mapt einen Raw-Byte-Bereich (0–255) auf physikalische Werte.
-
-| Feld | Bedeutung |
-|------|-----------|
-| `scaling.type` | `linear`, `linear_bipolar` — Interpolationsart |
-| `scaling.unit` | Physikalische Einheit als maschinenlesbarer String |
-| `scaling.raw` | Raw-Bereich (immer 0–255 für uint8) |
-| `scaling.physical` | Physikalischer Min/Max-Bereich |
-| `range` | Redundante Kurzform für schnellen Zugriff im Parser |
-| `encoding.method` | `linear_scaled` (hat Skalierung), `direct` (kein Mapping) |
-
-> **Hinweis**: Das frühere Schema speicherte Formeln als Strings (`"hz = 300 + (value / 255) * 600"`).
-> Das ist nicht validierbar und erfordert `eval()`. Das strukturierte `scaling`-Objekt erlaubt
-> direkte Auswertung ohne String-Parsing.
+- `lookup_linear`
 
 #### Aufzählungstypen (Enumerations)
 

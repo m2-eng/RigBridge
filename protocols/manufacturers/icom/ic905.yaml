@@ -9,20 +9,11 @@ protocol:
   manufacturer: "Icom"
   description: "Multi-band transceiver with complete CI-V command set"
 
-  config:
-    timeouts:
-      command_response: 1.0
-      session_idle: 300.0
-
-    frame:
-      preamble: [0xFE, 0xFE]
-      terminator: 0xFD
-      default_controller: 0xE0
-      default_radio: 0xAC
-
-  addresses:
-    controller: 0xE0
-    radio: 0xA4
+  frame:
+    preamble: [0xFE, 0xFE]
+    terminator: 0xFD
+    default_controller: 0xE0
+    default_radio: 0xAC
 
   # Command definitions based on IC-905 CI-V Reference Guide
   commands:
@@ -757,16 +748,15 @@ protocol:
     #         type: "uint8_cw_pitch"
     #   response: *status_ok_ng
 
-    # read_rf_power:
-    #   cmd: 0x14
-    #   subcmd: 0x0A
-    #   description: "Read RF power"
-    #   request:
-    #     structure: []
-    #   response:
-    #     structure:
-    #       - name: "level_high"
-    #         type: "uint8_percent"
+    read_rf_power:
+      cmd: 0x14
+      subcmd: 0x0A
+      description: "Read RF power"
+      request: []
+      response:
+        - name: "rf_power"
+          type: "uint8_percent"
+          description: "Read RF power level (0-100%)"
 
     # set_rf_power:
     #   cmd: 0x14
