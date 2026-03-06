@@ -7,7 +7,8 @@ mit CI-V Protokoll-Support.
 
 import serial
 import time
-from typing import Optional
+import asyncio
+from typing import Optional, Set
 
 from ..config.logger import RigBridgeLogger
 from ..config.settings import USBConfig
@@ -39,13 +40,13 @@ class USBConnection(BaseTransport):
         self.simulate = simulate
         self.serial_port: Optional[serial.Serial] = None
 
+        # Background Reader Verwaltung
+        self._background_reader_running = False
+        self._expected_responses: Set[bytes] = set()  # Tracking für erwartete Antworten
+
         # Verbinde automatisch im nicht-simulierten Modus
         if not simulate:
-            if self.connect():
-                # Starte unsolicited frame handling nur wenn Handler registriert sind
-                # (wird automatisch von register_unsolicited_handler() gestartet)
-                self.register_unsolicited_handler(lambda frame: None)  # Dummy-Handler, damit Task gestartet wird
-                pass
+            self.connect()
 
     def connect(self) -> bool:
         """
@@ -97,6 +98,9 @@ class USBConnection(BaseTransport):
             self.state.update_status(TransportStatus.CONNECTED, connection_info=connection_info)
             self.last_error = None
 
+            # Starte Background-Reader automatisch bei erfolgreicher Verbindung
+            self._start_background_reader()
+
             return True
 
         except serial.SerialException as e:
@@ -115,7 +119,10 @@ class USBConnection(BaseTransport):
 
         Stoppt auch Background-Tasks für unsolicited frames.
         """
-        # Stoppe Background-Task (von BaseTransport)
+        # Stoppe Background-Reader (Hook-Methode)
+        self._stop_background_reader()
+
+        # Stoppe Unsolicited Frame Listener (von BaseTransport)
         self._stop_listening_for_unsolicited_frames()
 
         # Schließe serielle Verbindung
@@ -298,10 +305,111 @@ class USBConnection(BaseTransport):
 
         return self.reconnect()
 
+    # ========================================================================
+    # Background Reader Implementation (ereignisbasiert)
+    # ========================================================================
+
+    def _start_background_reader(self) -> None:
+        """
+        Startet den kontinuierlichen Background-Reader für USB.
+
+        Dieser Reader läuft kontinuierlich und überwacht den USB-Port
+        auf eingehende Daten. Sobald Daten empfangen werden, werden sie
+        in die Queue gelegt (unabhängig von Handler-Registrierungen).
+        """
+        if self._background_reader_running or self.simulate:
+            return
+
+        try:
+            # Prüfe ob Event Loop verfügbar ist
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # Kein Event Loop - wird später manuell gestartet werden müssen
+                logger.debug("Kein Event Loop verfügbar - Background-Reader wird später gestartet")
+                return
+
+            self._background_reader_running = True
+            self._background_reader_task = asyncio.create_task(
+                self._continuous_reader()
+            )
+            logger.debug("USB Background-Reader gestartet (ereignisbasiert)")
+        except RuntimeError as e:
+            logger.warning(f"Kann Background-Reader nicht starten (kein Event Loop): {e}")
+
+    def _stop_background_reader(self) -> None:
+        """
+        Stoppt den kontinuierlichen Background-Reader.
+        """
+        if not self._background_reader_running:
+            return
+
+        self._background_reader_running = False
+
+        if self._background_reader_task:
+            try:
+                self._background_reader_task.cancel()
+                logger.debug("USB Background-Reader gestoppt")
+            except Exception as e:
+                logger.error(f"Fehler beim Stoppen des Background-Readers: {e}")
+            finally:
+                self._background_reader_task = None
+
+    async def _continuous_reader(self) -> None:
+        """
+        Kontinuierlicher Hintergrund-Reader für USB-Daten.
+
+        Diese Coroutine läuft kontinuierlich und überwacht den USB-Port.
+        Sobald Daten empfangen werden, werden sie als unsolicited frames
+        behandelt und in die Event-Queue gelegt.
+
+        WICHTIG: Dies ist der ereignisbasierte Trigger!
+        Kein zeitgesteuertes Polling mehr - wir warten auf echte Daten.
+        """
+        logger.info("USB Continuous Reader gestartet (ereignisbasiert)")
+
+        try:
+            while self._background_reader_running and self.state.is_connected():
+                try:
+                    # Lese Daten vom USB-Port (nicht-blocking via asyncio)
+                    # Kurzer Timeout, damit wir graceful shutdown prüfen können
+                    frame = await asyncio.to_thread(
+                        self.read_response,
+                        timeout=0.2
+                    )
+
+                    if frame:
+                        # Frame empfangen! Das ist der Event-Trigger!
+                        logger.debug(
+                            f"USB Background-Reader: Frame empfangen (ereignisbasiert): {frame}"
+                        )
+
+                        # TODO (UNSOL-08 bis UNSOL-10): Response-Tracking-System implementieren
+                        # - Prüfen ob Frame zu erwarteter Antwort gehört (cmd/subcmd Match)
+                        # - Expected Response → an wartenden Command-Handler weiterleiten
+                        # - Unsolicited Frame → in Event-Queue für Handler-Callbacks
+                        # Aktuell: Alle Frames werden als unsolicited behandelt
+                        self._push_unsolicited_frame(frame)
+
+                    # Ganz kurze Pause, um Event Loop nicht zu blockieren
+                    await asyncio.sleep(0.01)
+
+                except asyncio.CancelledError:
+                    logger.info("USB Continuous Reader wurde abgebrochen")
+                    break
+                except Exception as e:
+                    logger.error(f"Fehler im USB Continuous Reader: {e}")
+                    await asyncio.sleep(0.5)  # Fehler-Backoff
+
+        finally:
+            logger.info("USB Continuous Reader beendet")
+            self._background_reader_running = False
+
     def __repr__(self) -> str:
         """String-Repräsentation."""
         status = "verbunden" if self.state.is_connected() else "getrennt"
-        return f"USBConnection({self.config.port}, {status})"
+        reader_status = "aktiv" if self._background_reader_running else "inaktiv"
+        return f"USBConnection({self.config.port}, {status}, reader={reader_status})"
 
 
 # =============================================================================

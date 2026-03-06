@@ -59,28 +59,86 @@ function setupTabNavigation() {
   console.info(`Found ${navTabs.length} nav tabs and ${tabContents.length} tab contents`);
 
   navTabs.forEach((tab) => {
-    tab.addEventListener('click', (e) => {
+    tab.addEventListener('click', async (e) => {
       e.preventDefault();
-      console.info(`Tab clicked: ${tab.dataset.tab}`);
+      const tabName = tab.dataset.tab;
+      console.info(`Tab clicked: ${tabName}`);
 
       // Tab als aktiv markieren
       navTabs.forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
 
       // Content anzeigen
-      const tabId = tab.dataset.tab;
+      const tabId = `${tabName}-tab`;
       tabContents.forEach((content) => {
         content.classList.remove('active');
       });
-      const activeContent = document.getElementById(`${tabId}-tab`);
+      const activeContent = document.getElementById(tabId);
       if (activeContent) {
         activeContent.classList.add('active');
-        console.info(`Activated tab: ${tabId}-tab`);
+        console.info(`Activated tab: ${tabId}`);
+
+        // License-Tab: Datei laden
+        if (tabName === 'license') {
+          await loadLicenseContent();
+        }
       } else {
-        console.warn(`Tab content not found: ${tabId}-tab`);
+        console.warn(`Tab content not found: ${tabId}`);
       }
     });
   });
+}
+
+// ============================================================================
+// LICENSE LOADING
+// ============================================================================
+
+async function loadLicenseContent() {
+  try {
+    const licenseContainer = document.getElementById('license-content');
+    if (!licenseContainer) {
+      console.warn('License container not found');
+      return;
+    }
+
+    // Prüfe ob wir bereits geladen haben
+    if (licenseContainer.dataset.loaded === 'true') {
+      console.info('License already loaded');
+      return;
+    }
+
+    licenseContainer.innerHTML = '<p><em>Lizenz wird geladen...</em></p>';
+
+    const response = await fetch('/api/license');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const licenseContent = data.content || 'Lizenz nicht gefunden';
+
+    // Lizenz als <pre> mit Zeilenumbruch anzeigen
+    licenseContainer.innerHTML = `<pre class="license-text">${escapeHtml(licenseContent)}</pre>`;
+    licenseContainer.dataset.loaded = 'true';
+
+    console.info('License content loaded successfully');
+  } catch (error) {
+    console.error('Failed to load license:', error);
+    const licenseContainer = document.getElementById('license-content');
+    if (licenseContainer) {
+      licenseContainer.innerHTML = `<p class="error">Lizenz konnte nicht geladen werden: ${escapeHtml(error.message)}</p>`;
+    }
+  }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ============================================================================
@@ -590,10 +648,20 @@ async function testWavelogConnection() {
       statusEl.textContent = `✗ Connection failed: ${result.message}`;
       statusEl.className = 'status-line error';
     }
+
+    // Top-Statusbar sofort aktualisieren (CAT-Status)
+    if (typeof statusWidget !== 'undefined' && statusWidget) {
+      await statusWidget.updateStatus();
+    }
   } catch (error) {
     const statusEl = document.getElementById('wavelog-test-status');
     statusEl.textContent = `✗ Test error: ${error.message}`;
     statusEl.className = 'status-line error';
+
+    if (typeof statusWidget !== 'undefined' && statusWidget) {
+      await statusWidget.updateStatus();
+    }
+
     console.error('Wavelog test failed:', error);
   }
 }

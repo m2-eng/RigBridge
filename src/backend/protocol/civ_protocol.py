@@ -1,7 +1,8 @@
 """
-CI-V Befehlsausführung und -verarbeitung.
+CI-V Protocol Implementation für ICOM Funkgeräte.
 
-Parsed YAML-Protokolldefinitionen und führt CI-V-Befehle aus.
+Konkrete Implementierung von BaseProtocol für das CI-V-Protokoll.
+Integriert YAML-Parser und Command Executor für Frame-Building und Parsing.
 """
 
 from typing import Any, Dict, Optional, List, Tuple
@@ -10,11 +11,16 @@ from pathlib import Path
 import yaml
 from enum import Enum
 
+from .base_protocol import BaseProtocol, CommandResult
 from ..config.logger import RigBridgeLogger
 from ..transport.transport_manager import TransportManager
 
 logger = RigBridgeLogger.get_logger(__name__)
 
+
+# ============================================================================
+# Data Types and Structures
+# ============================================================================
 
 class DataType(str, Enum):
     """Unterstützte Datentypen in Protokollen."""
@@ -53,6 +59,10 @@ class CommandResult:
     error: Optional[str] = None
     raw_response: Optional[bytes] = None
 
+
+# ============================================================================
+# Protocol Parser - YAML Support
+# ============================================================================
 
 class ProtocolParser:
     """Parser für YAML-Protokolldefinitionen."""
@@ -216,7 +226,6 @@ class ProtocolParser:
 
         return protocol
 
-
     def _read_protocol_command(self, command_name: str) -> str:
         """Liest einen Befehl aus der YAML-Datei."""
         # Lesen der YAML-Datei und Suche nach dem Befehl
@@ -241,6 +250,10 @@ class ProtocolParser:
             logger.warning(f'Command "{command_name}" not found in protocol file')
             return None
 
+
+# ============================================================================
+# Command Executor - Frame Building and Response Parsing
+# ============================================================================
 
 class CIVCommandExecutor:
     """
@@ -609,15 +622,6 @@ class CIVCommandExecutor:
 
             return {'raw_data': payload.hex()}, None
 
-    # @staticmethod
-    # def _decode_bytes(payload: bytes, command: Dict[str, Any]):
-    #     """Dekodiert Payload-Bytes basierend auf der Befehlsdefinition."""
-    #     bytes = command['encoding'].get('bytes', [])
-    #     print(f'Decoding bytes for command: {command["name"]}')
-
-
-
-# finding: These functions do not use the YAML-files of the CI-V protocol. (see #9 GitHub issue for details)
     @staticmethod
     def _frequency_to_bcd(frequency_hz: int) -> bytes:
         """Konvertiert Frequenz (Hz) in BCD-Format für CI-V."""
@@ -652,3 +656,248 @@ class CIVCommandExecutor:
             factor *= 10
 
         return frequency
+
+
+# ============================================================================
+# CIVProtocol - BaseProtocol Implementation
+# ============================================================================
+
+class CIVProtocol(BaseProtocol):
+    """
+    CI-V Protocol Implementation.
+
+    Implementiert das CI-V-Protokoll für ICOM Funkgeräte.
+    Nutzt intern den CIVCommandExecutor für Frame-Building und Parsing.
+
+    Features:
+    - YAML-basierte Protokolldefinitionen
+    - Frame-Building und Response-Parsing
+    - Radio-ID-Validierung
+    - Unsolicited Frame Handling
+    """
+
+    def __init__(
+        self,
+        protocol_file: Path,
+        manufacturer_file: Optional[Path] = None,
+        usb_connection=None,
+    ):
+        """
+        Initialisiert das CI-V Protokoll.
+
+        Args:
+            protocol_file: Pfad zur YAML-Protokolldefinition
+            manufacturer_file: Pfad zur Hersteller-YAML
+            usb_connection: USBConnection-Instanz (optional)
+        """
+        super().__init__(protocol_file, manufacturer_file)
+
+        # Interne Executor-Instanz (Delegation)
+        self._executor = CIVCommandExecutor(
+            protocol_file=protocol_file,
+            manufacturer_file=manufacturer_file if manufacturer_file else protocol_file,
+            usb_connection=usb_connection
+        )
+
+        # Parser für Radio-ID-Validierung
+        self._parser = self._executor.parser
+
+        logger.info(
+            f'CIVProtocol initialized with {len(self._parser.commands)} commands'
+        )
+
+    def set_usb_connection(self, usb_connection) -> None:
+        """Setzt die USB-Verbindung für Befehlsausführung."""
+        self._executor.set_usb_connection(usb_connection)
+
+    # ========================================================================
+    # BaseProtocol Implementation
+    # ========================================================================
+
+    async def execute_command(
+        self,
+        command_name: str,
+        data: Optional[Dict[str, Any]] = None,
+        is_health_check: bool = False,
+    ) -> CommandResult:
+        """
+        Führt einen CI-V Befehl aus.
+
+        Delegiert an internen CIVCommandExecutor.
+
+        Args:
+            command_name: Name des Befehls aus YAML
+            data: Optionale Befehlsdaten
+            is_health_check: True für Health-Check-Befehle
+
+        Returns:
+            CommandResult mit Erfolg/Fehler und Daten
+        """
+        try:
+            result = await self._executor.execute_command(
+                command_name=command_name,
+                data=data,
+                is_health_check=is_health_check
+            )
+            return result
+        except Exception as e:
+            logger.error(f'CIV command execution failed: {e}')
+            return CommandResult(
+                success=False,
+                error=str(e)
+            )
+
+    def list_commands(self) -> List[str]:
+        """
+        Gibt Liste aller verfügbaren CI-V Befehle zurück.
+
+        Returns:
+            Liste der Befehlsnamen aus YAML
+        """
+        return self._parser.list_commands()
+
+    def is_valid_radio_id(self, frame: bytes) -> bool:
+        """
+        Prüft ob ein Frame von der erwarteten Radio-ID stammt.
+
+        CI-V Frame-Struktur (unsolicited, Radio → PC):
+        [Preamble(2)] [Controller(1)] [Radio(1)] [CMD] [SUBCMD?] [DATA...] [Terminator]
+
+        Beispiel unsolicited frame:
+        FE FE E0 A4 00 50 01 43 28 FD
+        ^preamble ^ctrl ^radio ^cmd ...
+
+        Args:
+            frame: Empfangener Frame (raw bytes)
+
+        Returns:
+            True wenn Radio-ID = erwartete Adresse, sonst False
+        """
+        # Mindestlänge prüfen
+        if len(frame) < 6:
+            logger.debug(
+                f'Frame too short for Radio-ID validation: {len(frame)} bytes'
+            )
+            return False
+
+        # Preamble prüfen
+        if frame[0:2] != self._parser.preamble:
+            logger.debug('Invalid preamble in unsolicited frame')
+            return False
+
+        # Unsolicited frames haben Format: [Preamble] [Controller] [Radio] ...
+        # Position 2 = Controller, Position 3 = Radio
+        frame_controller = frame[2]
+        frame_radio = frame[3]
+
+        # Prüfe ob Radio-Adresse übereinstimmt
+        expected_radio = self._parser.radio_addr
+
+        if frame_radio != expected_radio:
+            logger.debug(
+                f'Radio-ID mismatch: got 0x{frame_radio:02X}, '
+                f'expected 0x{expected_radio:02X}'
+            )
+            return False
+
+        return True
+
+    async def handle_unsolicited_frame(self, frame: bytes) -> None:
+        """
+        Verarbeitet einen unsolicited CI-V Frame.
+
+        Workflow:
+        1. Validiert Radio-ID (bereits durch ProtocolManager geprüft)
+        2. Prüft Terminator
+        3. Extrahiert CMD/SUBCMD
+        4. Parst Payload (Frequenz, Mode, etc.)
+        5. Benachrichtigt registrierte Handler
+
+        Hinweis: Die vollständige Frame-Interpretation (Frequenz-Parsing, Mode-Parsing)
+        wird in einer späteren Phase implementiert, sobald die YAML-Definitionen
+        dafür bereitstehen.
+
+        Args:
+            frame: Empfangener unsolicited Frame
+        """
+        try:
+            # Debug-Ausgabe
+            hex_str = frame.hex(' ').upper()
+            logger.debug(f'Handling unsolicited CI-V frame: {hex_str}')
+
+            # Basis-Validierung
+            if len(frame) < 6:
+                logger.warning(f'Unsolicited frame too short: {len(frame)} bytes')
+                return
+
+            # Terminator prüfen
+            if frame[-1] != self._parser.terminator:
+                logger.warning('Unsolicited frame: Invalid terminator')
+                return
+
+            # CMD/SUBCMD extrahieren
+            # Frame: [Preamble(2)] [Controller] [Radio] [CMD] [SUBCMD?] [DATA...] [Terminator]
+            cmd = frame[4]
+
+            # Versuche Befehl zu identifizieren
+            # Hinweis: Dies ist eine vereinfachte Logik für Phase 1
+            # Vollständiges Matching mit subcmd folgt später
+            matching_command = None
+            for command in self._parser.commands.values():
+                if command.cmd == cmd:
+                    matching_command = command
+                    break
+
+            if matching_command:
+                logger.debug(
+                    f'Unsolicited frame recognized as: {matching_command.name} '
+                    f'(cmd=0x{cmd:02X})'
+                )
+
+                # TODO: Phase 2 - Vollständiges Parsing basierend auf YAML response-structure
+                # Für jetzt: nur Command-Name und raw payload extrahieren
+                payload_start = 5  # Nach [Preamble][Controller][Radio][CMD]
+                if matching_command.subcmd:
+                    payload_start += len(matching_command.subcmd)
+
+                payload = frame[payload_start:-1]  # Ohne Terminator
+
+                # Parsed data vorbereiten (vereinfacht)
+                parsed_data = {
+                    'command': matching_command.name,
+                    'raw_payload': payload.hex().upper(),
+                    # TODO: Frequency/Mode-Parsing hier einfügen wenn YAML-Definitionen bereit
+                }
+
+                # Handler benachrichtigen
+                self._notify_unsolicited_handlers(parsed_data)
+            else:
+                logger.debug(
+                    f'Unsolicited frame with unknown command: 0x{cmd:02X} '
+                    f'- Frame: {hex_str}'
+                )
+
+        except Exception as e:
+            logger.error(f'Error handling unsolicited frame: {e}')
+
+    # ========================================================================
+    # CI-V Spezifische Methoden
+    # ========================================================================
+
+    def get_radio_address(self) -> int:
+        """
+        Gibt die konfigurierte Radio-Adresse zurück.
+
+        Returns:
+            Radio-Adresse (z.B. 0xA4 für IC-905)
+        """
+        return self._parser.radio_addr
+
+    def get_controller_address(self) -> int:
+        """
+        Gibt die konfigurierte Controller-Adresse zurück.
+
+        Returns:
+            Controller-Adresse (z.B. 0xE0)
+        """
+        return self._parser.controller_addr

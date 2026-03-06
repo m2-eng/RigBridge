@@ -58,10 +58,12 @@ class BaseTransport(ABC):
         self.state = ConnectionState(transport_type)
         self.last_error: Optional[str] = None
 
-        # Unsolicited Frame Handling
+        # Unsolicited Frame Handling (Event-basiert)
         self._unsolicited_handlers: List[Callable[[FrameData], None]] = []
         self._listening_task: Optional[asyncio.Task] = None
         self._stop_listening = asyncio.Event()
+        self._unsolicited_queue: asyncio.Queue = asyncio.Queue()
+        self._background_reader_task: Optional[asyncio.Task] = None
 
     @abstractmethod
     def connect(self) -> bool:
@@ -79,6 +81,7 @@ class BaseTransport(ABC):
         Trennt die Verbindung.
 
         Sollte auch Background-Tasks stoppen.
+        WICHTIG: Implementierungen sollten _stop_background_reader() aufrufen!
         """
         pass
 
@@ -121,6 +124,56 @@ class BaseTransport(ABC):
         pass
 
     # ========================================================================
+    # Background Reader (Hook-Methoden für Subklassen)
+    # ========================================================================
+
+    def _start_background_reader(self) -> None:
+        """
+        Hook-Methode: Startet kontinuierlichen Background-Reader.
+
+        Diese Methode wird automatisch beim connect() aufgerufen,
+        um kontinuierlich eingehende Daten zu überwachen.
+
+        Transport-Implementierungen (z.B. USBConnection) sollten diese
+        Methode überschreiben, um einen kontinuierlichen Reader zu starten,
+        der eingehende Daten überwacht und _push_unsolicited_frame() aufruft.
+
+        WICHTIG: Der Reader läuft unabhängig von Handler-Registrierungen!
+        Er empfängt ALLE Daten und legt sie in die Queue. Die Handler werden
+        nur bei tatsächlicher Registrierung aufgerufen.
+
+        Beispiel-Implementierung:
+            >>> def _start_background_reader(self):
+            ...     if not self._background_reader_task:
+            ...         self._background_reader_task = asyncio.create_task(
+            ...             self._continuous_reader()
+            ...         )
+
+        Default: Keine Aktion (für Transports, die keinen Reader brauchen)
+        """
+        pass
+
+    def _stop_background_reader(self) -> None:
+        """
+        Hook-Methode: Stoppt kontinuierlichen Background-Reader.
+
+        Diese Methode wird beim disconnect() oder wenn keine Handler
+        mehr registriert sind aufgerufen.
+
+        Transport-Implementierungen sollten hier ihre Background-Tasks
+        sauber beenden.
+
+        Beispiel-Implementierung:
+            >>> def _stop_background_reader(self):
+            ...     if self._background_reader_task:
+            ...         self._background_reader_task.cancel()
+            ...         self._background_reader_task = None
+
+        Default: Keine Aktion
+        """
+        pass
+
+    # ========================================================================
     # Unsolicited Frame Handling
     # ========================================================================
 
@@ -149,8 +202,13 @@ class BaseTransport(ABC):
             self._unsolicited_handlers.append(handler)
             logger.debug(f"Handler registriert für unsolicited frames (total: {len(self._unsolicited_handlers)})")
 
-        # Starte Background-Task, wenn noch nicht gestartet
-        if not self._listening_task and self.state.is_connected():
+        # Starte Queue-Listener beim ersten Handler
+        # Background-Reader läuft bereits, wenn verbunden (gestartet in connect())
+        if len(self._unsolicited_handlers) == 1 and self.state.is_connected():
+            # Versuche Background-Reader zu starten, falls noch nicht gestartet
+            # (kann passieren wenn connect() vor Event Loop aufgerufen wurde)
+            self._start_background_reader()
+            # Starte Queue-Listener (verteilt Events an Handler)
             self._start_listening_for_unsolicited_frames()
 
     def unregister_unsolicited_handler(
@@ -169,9 +227,11 @@ class BaseTransport(ABC):
             self._unsolicited_handlers.remove(handler)
             logger.debug(f"Handler entfernt (verbleibend: {len(self._unsolicited_handlers)})")
 
-        # Stoppe Background-Task, wenn keine Handler mehr da sind
-        if not self._unsolicited_handlers and self._listening_task:
-            self._stop_listening_for_unsolicited_frames()
+        # Stoppe Queue-Listener, wenn keine Handler mehr da sind
+        # Background-Reader läuft weiter (wird nur bei disconnect() gestoppt)
+        if not self._unsolicited_handlers:
+            if self._listening_task:
+                self._stop_listening_for_unsolicited_frames()
 
     def _start_listening_for_unsolicited_frames(self) -> None:
         """
@@ -223,21 +283,29 @@ class BaseTransport(ABC):
 
     async def _listen_for_unsolicited_frames(self) -> None:
         """
-        Background-Task-Coroutine für kontinuierliches Lauschen.
+        Background-Task-Coroutine für ereignisbasiertes Lauschen.
 
-        Ruft handle_unsolicited_frames() kontinuierlich auf und
-        verteilt empfangene Frames an alle registrierten Handler.
+        Wartet auf Events aus der Queue (keine zeitgesteuerten Polls!).
+        Sobald ein unsolicited Frame in die Queue gelegt wird,
+        werden alle registrierten Handler aufgerufen.
+
+        Diese Methode blockiert effizient auf Queue.get() und wartet
+        auf echte Datenempfangs-Events statt regelmäßig zu pollen.
         """
-        logger.info(f"{self.transport_type}: Starte Lauschen auf unsolicited frames...")
+        logger.info(f"{self.transport_type}: Starte ereignisbasiertes Lauschen auf unsolicited frames...")
 
         try:
             while not self._stop_listening.is_set():
                 try:
-                    # Höre kurz zu - 0.1s Timeout
-                    frame = await self.handle_unsolicited_frames(timeout=0.1)
+                    # Warte auf Event: Sobald Daten empfangen werden, wird die Queue gefüllt
+                    # Diese await-Operation blockiert effizient ohne CPU-Last
+                    frame = await asyncio.wait_for(
+                        self._unsolicited_queue.get(),
+                        timeout=0.5  # Kurzer Timeout nur für graceful shutdown check
+                    )
 
                     if frame and self._unsolicited_handlers:
-                        logger.debug(f"[RX] Unsolicited frame erkannt: {frame}")
+                        logger.debug(f"[RX] Unsolicited frame erkannt (ereignisbasiert): {frame}")
 
                         # Rufe alle registrierten Handler auf
                         for handler in self._unsolicited_handlers:
@@ -246,8 +314,9 @@ class BaseTransport(ABC):
                             except Exception as e:
                                 logger.error(f"Fehler in unsolicited frame handler: {e}")
 
-                    # Kurze Pause, um Event Loop nicht zu blockieren
-                    await asyncio.sleep(0.01)
+                except asyncio.TimeoutError:
+                    # Kein Frame empfangen - das ist normal, nur für shutdown check
+                    continue
 
                 except Exception as e:
                     logger.error(f"Fehler beim Lauschen auf unsolicited frames: {e}")
@@ -256,25 +325,37 @@ class BaseTransport(ABC):
         except asyncio.CancelledError:
             logger.info(f"{self.transport_type}: Background-Task wurde abgebrochen")
         finally:
-            logger.info(f"{self.transport_type}: Beende Lauschen auf unsolicited frames")
+            logger.info(f"{self.transport_type}: Beende ereignisbasiertes Lauschen auf unsolicited frames")
 
-    async def handle_unsolicited_frames(
-        self,
-        timeout: float = 0.1
-    ) -> Optional[FrameData]:
+    def _push_unsolicited_frame(self, frame: FrameData) -> None:
         """
-        Liest einen Frame, der möglicherweise unerwartet ist.
+        Legt einen unsolicited Frame in die Event-Queue.
 
-        Diese Methode wird von der Background-Task aufgerufen.
-        Standardimplementierung ruft read_response() auf.
+        Diese Methode wird von konkreten Transport-Implementierungen
+        (z.B. USBConnection) aufgerufen, sobald unerwartet Daten
+        empfangen werden.
+
+        WICHTIG: Diese Methode ist NON-BLOCKING und trigger-basiert.
+        Sie wird aufgerufen, sobald der Low-Level-Transport erkennt,
+        dass Daten eingetroffen sind, die nicht zu einer erwarteten
+        Antwort gehören.
 
         Args:
-            timeout: Timeout in Sekunden
+            frame: Empfangener unsolicited Frame
 
-        Returns:
-            FrameData oder None bei Timeout
+        Beispiel:
+            >>> # In USBConnection, wenn unerwartet Daten empfangen werden:
+            >>> frame = FrameData(received_bytes)
+            >>> self._push_unsolicited_frame(frame)
         """
-        return self.read_response(timeout=timeout)
+        try:
+            # Non-blocking put in Queue
+            self._unsolicited_queue.put_nowait(frame)
+            logger.debug(f"Unsolicited frame in Queue gelegt: {frame}")
+        except asyncio.QueueFull:
+            logger.warning("Unsolicited frame queue ist voll, Frame wird verworfen")
+        except Exception as e:
+            logger.error(f"Fehler beim Hinzufügen von unsolicited frame zur Queue: {e}")
 
     # ========================================================================
     # Context Manager Support

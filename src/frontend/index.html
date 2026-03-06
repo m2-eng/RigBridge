@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RigBridge - Amateurfunk-Geräte-Steuerung</title>
+  <title>RigBridge - Funkgerät-API mit Wavelog-Anbindung</title>
   <link rel="stylesheet" href="/assets/base-styles.css">
   <link rel="stylesheet" href="/assets/components.css">
   <link rel="stylesheet" href="/assets/theme.css">
@@ -12,7 +12,7 @@
   <header class="app-header">
     <div class="header-content">
       <h1 class="app-title">RigBridge</h1>
-      <p class="app-subtitle">Amateurfunk-Geräte-Steuerung & Wavelog-Integration</p>
+      <p class="app-subtitle">Funkgerät-API mit Wavelog-Anbindung (DD0MM)</p>
     </div>
     <button id="theme-toggle" class="btn-icon" title="Light/Dark mode umschalten">
       🌙
@@ -44,6 +44,7 @@
       <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
       <button class="nav-tab" data-tab="logs">Logs</button>
       <button class="nav-tab" data-tab="info">Informationen</button>
+      <button class="nav-tab" data-tab="license">Lizenz</button>
     </nav>
 
     <!-- Tab Content -->
@@ -251,6 +252,14 @@
         <div id="logs-container" class="logs-list"></div>
       </div>
 
+      <!-- License Tab -->
+      <div id="license-tab" class="tab-content">
+        <h2>Lizenz</h2>
+        <div id="license-content" class="license-viewer">
+          <p><em>Lizenz wird geladen...</em></p>
+        </div>
+      </div>
+
       <!-- Info Tab -->
       <div id="info-tab" class="tab-content">
         <h2>System-Informationen</h2>
@@ -297,7 +306,7 @@
   </main>
 
   <footer class="app-footer">
-    <p>&copy; 2026 RigBridge - Amateurfunk-Geräte-Steuerung</p>
+    <p>RigBridge - Funkgerät-API mit Wavelog-Anbindung (DD0MM) - <a href="#" onclick="document.querySelector('[data-tab=license]').click(); return false;">Lizenz</a></p>
   </footer>
 
   <!-- Komponenten JavaScript -->

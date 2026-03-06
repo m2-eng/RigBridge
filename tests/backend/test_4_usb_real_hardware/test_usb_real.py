@@ -26,7 +26,7 @@ from pathlib import Path
 from src.backend.config.logger import RigBridgeLogger
 from src.backend.config.settings import ConfigManager
 from src.backend.transport import USBConnection
-from src.backend.civ.executor import CIVCommandExecutor
+from src.backend.protocol.civ_protocol import CIVCommandExecutor
 
 logger = RigBridgeLogger.get_logger(__name__)
 

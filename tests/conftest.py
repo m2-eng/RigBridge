@@ -57,3 +57,17 @@ def config_manager():
 def logger():
     """Logger für Tests."""
     return RigBridgeLogger.get_logger("tests")
+
+
+@pytest.fixture(autouse=True)
+def reset_protocol_manager():
+    """
+    Setze ProtocolManager vor jedem Test zurück.
+    
+    Da der ProtocolManager ein Singleton ist, muss der State zwischen
+    Tests zurückgesetzt werden, um Seiteneffekte zu vermeiden.
+    """
+    from src.backend.protocol.protocol_manager import ProtocolManager
+    pm = ProtocolManager()
+    pm._protocol = None
+    yield

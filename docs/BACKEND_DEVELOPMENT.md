@@ -81,7 +81,7 @@ Konfigurationsquelle: `config.json` (Single-Source-of-Truth für Non-Secrets)
 
 ### Protokoll-Parser (YAML → Python)
 ```python
-from src.backend.civ import CIVCommandExecutor
+from src.backend.protocol.civ_protocol import CIVCommandExecutor
 
 executor = CIVCommandExecutor(Path('protocols/manufacturers/icom/ic905.yaml'))
 
@@ -99,7 +99,7 @@ Die Befehlsausführung ist jetzt **asynchron** und nutzt einen zentralen **Trans
 
 ```python
 import asyncio
-from src.backend.civ import CIVCommandExecutor
+from src.backend.protocol.civ_protocol import CIVCommandExecutor
 from src.backend.transport.transport_manager import TransportManager
 from src.backend.transport import USBConnection
 
@@ -194,10 +194,10 @@ async def set_frequency(request: FrequencyRequest) -> Dict[str, Any]:
      # ... response_structure etc
    ```
 
-2. **Executor aktualisieren** (`src/backend/civ/executor.py`)
+2. **Protokoll aktualisieren** (`src/backend/protocol/civ_protocol.py`)
    ```python
-   # build_request() für read_clock mit realer Codierung
-   # parse_response() für Dekodieren des Uhrzeit-Formats
+   # CIVCommandExecutor._encode_data() für neue Befehle erweitern
+   # CIVCommandExecutor._decode_response() für Response-Parsing
    ```
 
 3. **Transport-Integration** (`src/backend/transport/usb_connection.py`)
@@ -298,7 +298,7 @@ print(json.dumps(config.to_dict(), indent=2))
 
 ### YAML-Parser debuggen
 ```python
-from src.backend.civ import CIVCommandExecutor
+from src.backend.protocol.civ_protocol import CIVCommandExecutor
 
 executor = CIVCommandExecutor(Path('protocols/manufacturers/icom/ic905.yaml'))
 

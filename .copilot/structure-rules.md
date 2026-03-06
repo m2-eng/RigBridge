@@ -47,7 +47,7 @@ RigBridge/
 |---|---|
 | REST-API-Routen und Handler (Python) | `src/backend/api/` |
 | CAT-Protokoll-Implementierung (Python) | `src/backend/cat/` |
-| CI-V Befehlsdefinitionen / Parser (Python) | `src/backend/civ/` |
+| CI-V Befehlsdefinitionen / Parser (Python) | `src/backend/protocol/` |
 | USB / Serial-Verbindungslogik (Python) | `src/backend/usb/` |
 | Konfigurationsdateien und -schemas (Python) | `src/backend/config/` |
 | Wiederverwendbare UI-Bausteine (HTML + JS) | `src/frontend/components/` |

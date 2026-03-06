@@ -7,7 +7,7 @@ Testet das Laden und Parsing der YAML-Protokolldateien.
 import pytest
 from pathlib import Path
 
-from src.backend.civ.executor import ProtocolParser
+from src.backend.protocol.civ_protocol import ProtocolParser
 
 
 @pytest.mark.protocol

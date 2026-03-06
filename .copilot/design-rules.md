@@ -25,8 +25,8 @@
 
 ## 3. Backend
 
-- **USB-Kommunikation** läuft in einem eigenen Modul (`src/backend/usb/`) und ist über ein definiertes Interface abstrahiert.
-- **CI-V-Befehle** werden ausschließlich im Modul `src/backend/civ/` zusammengestellt und interpretiert.
+- **USB-Kommunikation** läuft in einem eigenen Modul (`src/backend/transport/`) und ist über ein definiertes Interface abstrahiert.
+- **CI-V-Befehle** werden im Protokoll-Layer (`src/backend/protocol/`) definiert und interpretiert.
 - **CAT-Schnittstelle** (`src/backend/cat/`) ist ein eigenständiger Service, der die API nach außen (Wavelog) exponiert.
 - Konfigurationen (Baud Rate, Port, API Key, ...) werden persistent gespeichert und beim Start geladen.
 - Der USB/Serial-Port-Name wird **ausschließlich über Konfiguration / Umgebungsvariable** übergeben – nie hardcoded. Format ist OS-abhängig (`/dev/ttyUSB0` auf Linux, `COM3` auf Windows).

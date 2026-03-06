@@ -20,47 +20,77 @@ from enum import Enum
 from ..config.logger import RigBridgeLogger
 from ..config.settings import ConfigManager, LogLevel
 from ..config.secret_provider import create_secret_provider, SecretProviderError
-from ..civ.executor import CIVCommandExecutor, CommandResult
+from ..protocol import ProtocolManager
+from ..protocol.civ_protocol import CIVProtocol
+from ..protocol.base_protocol import CommandResult
 from ..transport import USBConnection, TransportStatus
 from ..cat.cat_client import WavelogCatClient
+from ..cat.connection_state import CatConnectionState, CatConnectionStatus
 from src import __version__
 
 logger = RigBridgeLogger.get_logger(__name__)
 
 # ============================================================================
-# Globaler Executor-Cache (für Health-Check und API-Endpunkte)
+# Globaler Protocol Manager (Singleton)
 # ============================================================================
-_global_executor_cache: Dict[str, CIVCommandExecutor] = {}
+_global_protocol_manager: Optional[ProtocolManager] = None
 
 
-def _get_or_create_executor() -> CIVCommandExecutor:
+def _get_or_create_protocol_manager() -> ProtocolManager:
     """
-    Globale Executor-Instanz (Singleton).
+    Globale ProtocolManager-Instanz (Singleton).
     Wird von Health-Check und API-Endpunkten gemeinsam genutzt.
     """
-    cache_key = 'default'
-    if cache_key not in _global_executor_cache:
+    global _global_protocol_manager
+
+    if _global_protocol_manager is None:
         try:
             config = ConfigManager.get()
             protocol_file = config.device.get_protocol_path()
             manufacturer_file = config.device.get_manufacturer_path()
-            executor = CIVCommandExecutor(protocol_file, manufacturer_file)
-            logger.debug(f'CIV Executor initialized for {protocol_file}')
 
-            # Initialisiere USB-Connection
+            # CIVProtocol-Instanz erstellen
+            protocol = CIVProtocol(
+                protocol_file=protocol_file,
+                manufacturer_file=manufacturer_file
+            )
+            logger.debug(f'CIVProtocol initialized for {protocol_file}')
+
+            # USB-Connection initialisieren
             try:
                 usb_conn = USBConnection(config.usb)
-                executor.set_usb_connection(usb_conn)
+                protocol.set_usb_connection(usb_conn)
                 logger.info(f'USB Connection configured for {config.usb.port} @ {config.usb.baud_rate} baud')
+
+                # Registriere ProtocolManager als Unsolicited-Frame-Handler am Transport
+                # Wrapper-Funktion, um FrameData in bytes zu konvertieren
+                def unsolicited_frame_handler(frame_data):
+                    """Handler für unsolicited frames vom Transport → ProtocolManager."""
+                    try:
+                        # Extrahiere raw bytes aus FrameData
+                        raw_bytes = frame_data.raw_bytes if hasattr(frame_data, 'raw_bytes') else bytes(frame_data)
+                        # Leite an ProtocolManager weiter (dieser prüft Radio-ID)
+                        # Verwende create_task, da handle_unsolicited_frame async ist
+                        asyncio.create_task(_global_protocol_manager.handle_unsolicited_frame(raw_bytes))
+                    except Exception as e:
+                        logger.error(f'Error in unsolicited frame handler: {e}')
+
+                usb_conn.register_unsolicited_handler(unsolicited_frame_handler)
+                logger.debug('ProtocolManager registered as unsolicited frame handler')
+
             except Exception as e:
                 logger.warning(f'Failed to initialize USB connection: {e} - Using mock data')
 
-            _global_executor_cache[cache_key] = executor
+            # ProtocolManager erstellen und Protokoll setzen
+            _global_protocol_manager = ProtocolManager()
+            _global_protocol_manager.set_protocol(protocol)
+            logger.info('ProtocolManager initialized with CIVProtocol')
+
         except Exception as e:
-            logger.error(f'Failed to create executor: {e}')
+            logger.error(f'Failed to create ProtocolManager: {e}')
             raise
 
-    return _global_executor_cache[cache_key]
+    return _global_protocol_manager
 
 
 def _resolve_wavelog_api_key(config) -> str:
@@ -104,6 +134,23 @@ async def _fetch_wavelog_station_info(config, api_key: str) -> List[Dict[str, An
         raise ValueError('WaveLog station_info returned unexpected payload format')
 
     return payload
+
+
+def _is_auth_related_error(error_text: str) -> bool:
+    """Heuristik: Erkennt API-Key/Auth-bezogene Fehlertexte."""
+    text = (error_text or '').lower()
+    patterns = [
+        '401',
+        '403',
+        'unauthorized',
+        'forbidden',
+        'api key',
+        'apikey',
+        'auth',
+        'token',
+        'authentication',
+    ]
+    return any(p in text for p in patterns)
 
 
 # ============================================================================
@@ -167,6 +214,13 @@ class SMeterResponse(BaseModel):
     )
     level_raw: int = Field(
         description='Roher Sensor-Wert (0-255)'
+    )
+
+
+class PowerResponse(BaseModel):
+    """Response für Sendeleistungs-Lesungen (VORBEREITET)."""
+    power_w: float = Field(
+        description='Sendeleistung in Watt [W]'
     )
 
 
@@ -253,6 +307,13 @@ class DeviceListResponse(BaseModel):
     )
 
 
+class LicenseResponse(BaseModel):
+    """Response mit Lizenzinhalten."""
+    content: str = Field(
+        description='Inhalt der LICENSE-Datei'
+    )
+
+
 class USBConfigUpdate(BaseModel):
     port: Optional[str] = None
     baud_rate: Optional[int] = None
@@ -322,6 +383,10 @@ _cat_client_state = {
     'task': None,
     'running': False,
     'last_update': None,
+    'last_send_success': None,
+    'last_test_success': None,
+    'last_error': None,
+    'connection_state': CatConnectionState(),
 }
 
 
@@ -332,18 +397,18 @@ async def _perform_usb_health_check() -> TransportStatus:
     Sendet den 'read_transceiver_id' Befehl und evaluiert die Antwort.
     Bei Fehler wird automatisch ein Reconnect-Versuch unternommen.
 
-    WICHTIG: Nutzt TransportManager automatisch via executor.execute_command()
+    WICHTIG: Nutzt TransportManager automatisch via protocol_manager.execute_command()
     für Synchronisierung.
 
     Returns:
         TransportStatus: disconnected, attached oder connected
     """
     try:
-        executor = _get_or_create_executor()
+        protocol_manager = _get_or_create_protocol_manager()
 
         # Port ist offen - teste ob Gerät antwortet
         # execute_command ist ASYNC und nutzt TransportManager automatisch
-        result = await executor.execute_command(
+        result = await protocol_manager.execute_command(
             'read_transceiver_id',
             is_health_check=True,
         )
@@ -425,8 +490,13 @@ async def stop_usb_health_check_task():
 
 def get_usb_status() -> TransportStatus:
     """Gibt aktuellen, zyklisch geprüften USB-Status zurück."""
-    executor = _get_or_create_executor()
-    return executor.usb_connection.state.status if executor and executor.usb_connection else TransportStatus.DISCONNECTED
+    protocol_manager = _get_or_create_protocol_manager()
+    protocol = protocol_manager.get_protocol()
+
+    if protocol and hasattr(protocol, '_executor') and protocol._executor.usb_connection:
+        return protocol._executor.usb_connection.state.status
+
+    return TransportStatus.DISCONNECTED
 
 
 # ============================================================================
@@ -444,26 +514,16 @@ async def _get_radio_status() -> Dict[str, Any]:
         Dict mit frequency_hz, mode, power_w (oder None wenn nicht verfügbar)
     """
     try:
-        executor = _get_or_create_executor()
+        protocol_manager = _get_or_create_protocol_manager()
 
         # Frequenz auslesen
-        frequency_hz = None
-        freq_result = await executor.execute_command('read_operating_frequency')
-        if freq_result.success and freq_result.data:
-            frequency_hz = freq_result.data.get('frequency')
+        frequency_hz = await protocol_manager.get_frequency()
 
         # Modus auslesen
-        mode = None
-        mode_result = await executor.execute_command('read_operating_mode')
-        if mode_result.success and mode_result.data:
-            mode = mode_result.data.get('mode')
+        mode = await protocol_manager.get_mode()
 
-        # Power auslesen (wenn Befehl verfügbar)
-        # Hinweis: Viele Geräte haben keinen Befehl zum Auslesen der aktuellen Sendeleistung
-        # Verwende Dummy-Wert oder lasse None
-        power_w = None
-        # TODO: Implementiere read_tx_power wenn verfügbar in YAML
-        # Für jetzt: Dummy-Wert basierend auf Config oder None
+        # Power auslesen (wenn Befehl verfügbar) - VORBEREITET
+        power_w = await protocol_manager.get_power()
 
         return {
             'frequency_hz': frequency_hz,
@@ -491,6 +551,11 @@ async def _get_or_create_cat_client() -> Optional[WavelogCatClient]:
 
     # Prüfe ob WaveLog aktiviert ist
     if not config.wavelog.enabled:
+        _cat_client_state['last_error'] = 'WaveLog disabled'
+        _cat_client_state['connection_state'].update_status(
+            CatConnectionStatus.DISCONNECTED,
+            error='WaveLog disabled',
+        )
         return None
 
     # Erstelle Client wenn noch nicht vorhanden
@@ -499,6 +564,11 @@ async def _get_or_create_cat_client() -> Optional[WavelogCatClient]:
             # Prüfe ob API-Key konfiguriert ist
             if not config.wavelog.api_key_or_secret_ref:
                 logger.warning('Wavelog API-Key ist nicht konfiguriert')
+                _cat_client_state['last_error'] = 'Wavelog API-Key ist nicht konfiguriert'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.WARNING,
+                    error='Wavelog API-Key ist nicht konfiguriert',
+                )
                 return None
 
             # API-Key auflösen (Secret-Ref oder direkter Key)
@@ -506,6 +576,11 @@ async def _get_or_create_cat_client() -> Optional[WavelogCatClient]:
                 api_key = _resolve_wavelog_api_key(config)
             except SecretProviderError as e:
                 logger.warning(f'Konnte API-Key nicht laden: {e}')
+                _cat_client_state['last_error'] = f'Konnte API-Key nicht laden: {e}'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.WARNING,
+                    error=f'Konnte API-Key nicht laden: {e}',
+                )
                 return None
 
             # Client erstellen (Context Manager wird NICHT verwendet im Background-Task)
@@ -515,10 +590,17 @@ async def _get_or_create_cat_client() -> Optional[WavelogCatClient]:
             await client.__aenter__()
 
             _cat_client_state['client'] = client
+            _cat_client_state['last_error'] = None
+            # Client erstellt: noch kein verifizierter End-to-End Test, Status bleibt wie bisher
             logger.info('WaveLog CAT Client erstellt')
 
         except Exception as e:
             logger.error(f'Fehler beim Erstellen des CAT-Clients: {e}')
+            _cat_client_state['last_error'] = f'Fehler beim Erstellen des CAT-Clients: {e}'
+            _cat_client_state['connection_state'].update_status(
+                CatConnectionStatus.DISCONNECTED,
+                error=f'Fehler beim Erstellen des CAT-Clients: {e}',
+            )
             return None
 
     return _cat_client_state['client']
@@ -536,6 +618,11 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
     # Prüfe ob aktiviert
     if not config.wavelog.enabled:
         logger.info('WaveLog CAT-Integration ist deaktiviert')
+        _cat_client_state['last_error'] = 'WaveLog CAT-Integration ist deaktiviert'
+        _cat_client_state['connection_state'].update_status(
+            CatConnectionStatus.DISCONNECTED,
+            error='WaveLog CAT-Integration ist deaktiviert',
+        )
         return
 
     if _cat_client_state['running']:
@@ -569,6 +656,11 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
 
                         if success:
                             consecutive_failures = 0
+                            _cat_client_state['last_send_success'] = True
+                            _cat_client_state['last_error'] = None
+                            _cat_client_state['connection_state'].update_status(
+                                CatConnectionStatus.CONNECTED
+                            )
                             logger.debug(
                                 f'Radio-Status an WaveLog gesendet: '
                                 f'{status["frequency_hz"]} Hz, {status["mode"]}'
@@ -576,6 +668,18 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
                             _cat_client_state['last_update'] = asyncio.get_event_loop().time()
                         else:
                             consecutive_failures += 1
+                            _cat_client_state['last_send_success'] = False
+                            _cat_client_state['last_error'] = 'WaveLog-Update fehlgeschlagen'
+                            if getattr(client, 'last_error_kind', None) == 'auth':
+                                _cat_client_state['connection_state'].update_status(
+                                    CatConnectionStatus.WARNING,
+                                    error='WaveLog API-Key/Authentifizierung fehlgeschlagen',
+                                )
+                            else:
+                                _cat_client_state['connection_state'].update_status(
+                                    CatConnectionStatus.DISCONNECTED,
+                                    error='WaveLog-Update fehlgeschlagen',
+                                )
                             if consecutive_failures % 6 == 1:
                                 logger.warning(
                                     f'WaveLog-Update fehlgeschlagen '
@@ -587,6 +691,12 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
             except Exception as e:
                 logger.error(f'Fehler im CAT-Update-Loop: {e}')
                 consecutive_failures += 1
+                _cat_client_state['last_send_success'] = False
+                _cat_client_state['last_error'] = f'Fehler im CAT-Update-Loop: {e}'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.DISCONNECTED,
+                    error=f'Fehler im CAT-Update-Loop: {e}',
+                )
 
             # Warte bis zum nächsten Update
             await asyncio.sleep(interval)
@@ -599,6 +709,7 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
 async def stop_cat_update_task():
     """Stoppt zyklische CAT-Updates zu WaveLog."""
     _cat_client_state['running'] = False
+    _cat_client_state['connection_state'].update_status(CatConnectionStatus.DISCONNECTED)
 
     # Task beenden
     if _cat_client_state['task']:
@@ -637,6 +748,12 @@ def get_cat_status() -> Dict[str, Any]:
         'running': _cat_client_state['running'],
         'last_update': _cat_client_state['last_update'],
         'client_connected': _cat_client_state['client'] is not None,
+        'connection_status': _cat_client_state['connection_state'].status.value,
+        'connected': _cat_client_state['connection_state'].is_connected(),
+        'last_send_success': _cat_client_state['last_send_success'],
+        'last_test_success': _cat_client_state['last_test_success'],
+        'last_error_kind': getattr(_cat_client_state['client'], 'last_error_kind', None) if _cat_client_state['client'] else None,
+        'last_error': _cat_client_state['last_error'] or _cat_client_state['connection_state'].last_error,
     }
 
 
@@ -649,9 +766,9 @@ def create_router() -> APIRouter:
     """Erstellt und konfiguriert den API-Router."""
     router = APIRouter()
 
-    def get_executor() -> CIVCommandExecutor:
-        """Gibt die globale CIV-Executor-Instanz zurück."""
-        return _get_or_create_executor()
+    def get_protocol_manager() -> ProtocolManager:
+        """Gibt die globale ProtocolManager-Instanz zurück."""
+        return _get_or_create_protocol_manager()
 
     # ========================================================================
     # STATUS ENDPOINTS
@@ -687,7 +804,7 @@ def create_router() -> APIRouter:
             secret_provider_available=secret_provider_available,
             device_name=config.device.name,
             api_version=__version__,
-            features=['set_frequency', 'set_mode', 'read_s_meter'],
+            features=['read_s_meter'],
             cat_status=get_cat_status(),
         )
 
@@ -769,9 +886,10 @@ def create_router() -> APIRouter:
         if 'usb' in payload:
             for key, value in payload['usb'].items():
                 setattr(config.usb, key, value)
-            # Invalidiere gecachten Executor damit er mit neuen USB-Settings neu erstellt wird
-            _global_executor_cache.clear()
-            logger.debug('CIV Executor Cache invalidiert (USB-Config aktualisiert)')
+            # Invalidiere ProtocolManager damit er mit neuen USB-Settings neu erstellt wird
+            global _global_protocol_manager
+            _global_protocol_manager = None
+            logger.debug('ProtocolManager invalidiert (USB-Config aktualisiert)')
 
         if 'api' in payload:
             api_values = payload['api']
@@ -804,9 +922,6 @@ def create_router() -> APIRouter:
         if 'wavelog' in payload:
             for key, value in payload['wavelog'].items():
                 setattr(config.wavelog, key, value)
-            # Invalidiere gecachten CAT-Client damit er mit neuen Settings neu erstellt wird
-            _cat_client_state['client'] = None
-            logger.debug('WaveLog CAT-Client Cache invalidiert (Config aktualisiert)')
 
             # Starte CAT-Task mit neuer Konfiguration neu
             await stop_cat_update_task()
@@ -830,39 +945,41 @@ def create_router() -> APIRouter:
         )
 
     # ========================================================================
-    # ALLGEMEINE COMMAND ENDPOINTS
+    # ALLGEMEINE COMMAND ENDPOINTS (Generische API)
     # ========================================================================
 
     @router.get(
-        '/command/{command_name}',
+        '/rig/command',
         response_model=CommandResponse,
         tags=['Commands'],
-        summary='Befehl ausführen (GET)',
+        summary='Generischer Befehl ausführen (GET - lesend)',
     )
-    async def execute_command_get(
-        command_name: str = PathParam(
-            description='Name des Befehls aus YAML'
+    async def execute_generic_command_get(
+        name: str = Query(
+            description='Name des Befehls aus YAML (z.B. "read_s_meter")'
         ),
     ) -> CommandResponse:
         """
-        Führt einen read-only Befehl aus.
+        Führt einen read-only Befehl aus der YAML-Protokolldefinition aus.
 
-        TransportManager kümmert sich automatisch um Synchronisierung.
-        Beispiel: `/api/command/read_s_meter`
+        Diese generische API unterstützt alle in der YAML definierten Lesebefehle.
+        ProtocolManager kümmert sich automatisch um Synchronisierung.
+
+        Beispiel: `GET /api/rig/command?name=read_s_meter`
         """
         try:
-            executor = get_executor()
-            result = await executor.execute_command(command_name)
+            protocol_manager = get_protocol_manager()
+            result = await protocol_manager.execute_command(name)
 
             if result.success:
-                logger.info(f'Command executed: {command_name}')
+                logger.info(f'Command executed: {name}')
                 return CommandResponse(
                     success=True,
-                    command=command_name,
+                    command=name,
                     data=result.data,
                 )
             else:
-                logger.warning(f'Command failed: {command_name} - {result.error}')
+                logger.warning(f'Command failed: {name} - {result.error}')
                 raise HTTPException(status_code=400, detail=result.error)
 
         except HTTPException:
@@ -872,21 +989,21 @@ def create_router() -> APIRouter:
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.put(
-        '/command/{command_name}',
+        '/rig/command',
         response_model=CommandResponse,
         tags=['Commands'],
-        summary='Befehl ausführen (PUT)',
+        summary='Generischer Befehl ausführen (PUT - schreibend)',
     )
-    async def execute_command_put(
-        command_name: str,
+    async def execute_generic_command_put(
         request: CommandRequest,
     ) -> CommandResponse:
         """
-        Führt einen Befehl mit Daten aus.
+        Führt einen schreibenden Befehl aus der YAML-Protokolldefinition aus.
 
-        TransportManager kümmert sich automatisch um Synchronisierung.
+        Diese generische API unterstützt alle in der YAML definierten Schreibbefehle.
+        ProtocolManager kümmert sich automatisch um Synchronisierung.
 
-        Beispiel:
+        Request Body Beispiel:
         ```json
         {
             "command": "set_operating_frequency",
@@ -895,18 +1012,21 @@ def create_router() -> APIRouter:
         ```
         """
         try:
-            executor = get_executor()
-            result = await executor.execute_command(command_name, data=request.data)
+            protocol_manager = get_protocol_manager()
+            result = await protocol_manager.execute_command(
+                command_name=request.command,
+                data=request.data
+            )
 
             if result.success:
-                logger.info(f'Command executed: {command_name}')
+                logger.info(f'Command executed: {request.command}')
                 return CommandResponse(
                     success=True,
-                    command=command_name,
+                    command=request.command,
                     data=result.data,
                 )
             else:
-                logger.warning(f'Command failed: {command_name} - {result.error}')
+                logger.warning(f'Command failed: {request.command} - {result.error}')
                 raise HTTPException(status_code=400, detail=result.error)
 
         except HTTPException:
@@ -928,59 +1048,22 @@ def create_router() -> APIRouter:
     async def get_frequency() -> FrequencyResponse:
         """Liest die aktuelle Betriebsfrequenz des Geräts."""
         try:
-            executor = get_executor()
-            result = await executor.execute_command('read_operating_frequency')
+            protocol_manager = get_protocol_manager()
+            frequency = await protocol_manager.get_frequency()
 
-            if result.success and result.data:
-                frequency = result.data.get('frequency', 0)
+            if frequency is not None:
                 logger.debug(f'Frequency read: {frequency} Hz')
                 return FrequencyResponse(frequency_hz=frequency)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=result.error or 'Failed to read frequency'
+                    detail='Failed to read frequency'
                 )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f'Frequency read failed: {e}')
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.put(
-        '/rig/frequency',
-        response_model=CommandResponse,
-        tags=['Frequency'],
-        summary='Betriebsfrequenz setzen',
-    )
-    async def set_frequency(request: FrequencyRequest) -> CommandResponse:
-        """Setzt eine neue Betriebsfrequenz."""
-        try:
-            executor = get_executor()
-            result = await executor.execute_command(
-                'set_operating_frequency',
-                data={'frequency': request.frequency_hz},
-            )
-
-            if result.success:
-                logger.debug(f'Frequency set to {request.frequency_hz} Hz')
-                return CommandResponse(
-                    success=True,
-                    command='set_operating_frequency',
-                    data={'frequency_hz': request.frequency_hz, 'status': 'OK'},
-                )
-            else:
-                logger.warning(f'Failed to set frequency: {result.error}')
-                return CommandResponse(
-                    success=False,
-                    command='set_operating_frequency',
-                    error=result.error or 'Failed to set frequency',
-                )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f'Frequency set failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
 
     # ========================================================================
@@ -996,59 +1079,22 @@ def create_router() -> APIRouter:
     async def get_mode() -> ModeResponse:
         """Liest den aktuellen Betriebsmodus des Geräts."""
         try:
-            executor = get_executor()
-            result = await executor.execute_command('read_operating_mode')
+            protocol_manager = get_protocol_manager()
+            mode = await protocol_manager.get_mode()
 
-            if result.success and result.data:
-                mode = result.data.get('mode', 'UNKNOWN')
+            if mode is not None:
                 logger.debug(f'Mode read: {mode}')
                 return ModeResponse(mode=mode)
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail=result.error or 'Failed to read mode'
+                    detail='Failed to read mode'
                 )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f'Mode read failed: {e}')
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.put(
-        '/rig/mode',
-        response_model=CommandResponse,
-        tags=['Mode'],
-        summary='Betriebsmodus setzen',
-    )
-    async def set_mode(request: ModeRequest) -> CommandResponse:
-        """Setzt einen neuen Betriebsmodus."""
-        try:
-            executor = get_executor()
-            result = await executor.execute_command(
-                'set_operating_mode',
-                data={'mode': request.mode},
-            )
-
-            if result.success:
-                logger.debug(f'Mode set to {request.mode}')
-                return CommandResponse(
-                    success=True,
-                    command='set_operating_mode',
-                    data={'mode': request.mode, 'status': 'OK'},
-                )
-            else:
-                logger.warning(f'Failed to set mode: {result.error}')
-                return CommandResponse(
-                    success=False,
-                    command='set_operating_mode',
-                    error=result.error or 'Failed to set mode',
-                )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f'Mode set failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
 
     # ========================================================================
@@ -1064,8 +1110,8 @@ def create_router() -> APIRouter:
     async def get_s_meter() -> SMeterResponse:
         """Liest den aktuellen S-Meter-Wert des Geräts."""
         try:
-            executor = get_executor()
-            result = await executor.execute_command('read_s_meter')
+            protocol_manager = get_protocol_manager()
+            result = await protocol_manager.execute_command('read_s_meter')
 
             if result.success and result.data:
                 raw_value = result.data.get('level_raw', 0)
@@ -1085,6 +1131,42 @@ def create_router() -> APIRouter:
             raise HTTPException(status_code=500, detail=str(e))
 
     # ========================================================================
+    # SPECIFIC POWER ENDPOINTS (VORBEREITET)
+    # ========================================================================
+
+    @router.get(
+        '/rig/power',
+        response_model=PowerResponse,
+        tags=['Power'],
+        summary='Aktuelle Sendeleistung auslesen (VORBEREITET)',
+    )
+    async def get_power() -> PowerResponse:
+        """
+        Liest die aktuelle Sendeleistung des Geräts (VORBEREITET).
+
+        Hinweis: Noch nicht vollständig implementiert.
+        Abhängig von YAML-Protokolldefinitionen und Geräteunterstützung.
+        """
+        try:
+            protocol_manager = get_protocol_manager()
+            power = await protocol_manager.get_power()
+
+            if power is not None:
+                logger.debug(f'Power read: {power} W')
+                return PowerResponse(power_w=power)
+            else:
+                raise HTTPException(
+                    status_code=501,  # Not Implemented
+                    detail='Power read not yet fully implemented or not supported by device'
+                )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f'Power read failed: {e}')
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # ========================================================================
     # INFO ENDPOINTS
     # ========================================================================
 
@@ -1097,8 +1179,8 @@ def create_router() -> APIRouter:
     async def list_commands() -> CommandListResponse:
         """Gibt eine Liste aller verfügbaren Befehle zurück."""
         try:
-            executor = get_executor()
-            commands = executor.parser.list_commands()
+            protocol_manager = get_protocol_manager()
+            commands = protocol_manager.list_commands()
             logger.debug(f'Listed {len(commands)} available commands')
             return CommandListResponse(commands=sorted(commands))
         except Exception as e:
@@ -1122,6 +1204,12 @@ def create_router() -> APIRouter:
 
             # Prüfe ob Wavelog aktiviert ist
             if not config.wavelog.enabled:
+                _cat_client_state['last_test_success'] = False
+                _cat_client_state['last_error'] = 'Wavelog is not enabled in configuration'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.DISCONNECTED,
+                    error='Wavelog is not enabled in configuration',
+                )
                 return WavelogTestResponse(
                     success=False,
                     message='Wavelog is not enabled in configuration',
@@ -1129,6 +1217,12 @@ def create_router() -> APIRouter:
 
             # Prüfe ob API-Key-Referenz/Fallback vorhanden ist
             if not config.wavelog.api_key_or_secret_ref:
+                _cat_client_state['last_test_success'] = False
+                _cat_client_state['last_error'] = 'Wavelog API key reference not configured'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.WARNING,
+                    error='Wavelog API key reference not configured',
+                )
                 return WavelogTestResponse(
                     success=False,
                     message='Wavelog API key reference not configured',
@@ -1138,6 +1232,12 @@ def create_router() -> APIRouter:
             try:
                 api_key = _resolve_wavelog_api_key(config)
             except SecretProviderError as e:
+                _cat_client_state['last_test_success'] = False
+                _cat_client_state['last_error'] = f'Secret provider error: {str(e)}'
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.WARNING,
+                    error=f'Secret provider error: {str(e)}',
+                )
                 return WavelogTestResponse(
                     success=False,
                     message=f'Secret provider error: {str(e)}',
@@ -1146,6 +1246,10 @@ def create_router() -> APIRouter:
             try:
                 stations_raw = await _fetch_wavelog_station_info(config, api_key)
                 logger.info(f'Wavelog connection test successful ({len(stations_raw)} stations)')
+                _cat_client_state['last_test_success'] = True
+                _cat_client_state['last_error'] = None
+                # Auch 0 Stationen sind ein valider Verbindungs-/Auth-Erfolg
+                _cat_client_state['connection_state'].update_status(CatConnectionStatus.CONNECTED)
                 return WavelogTestResponse(
                     success=True,
                     message='Wavelog is reachable and authenticated',
@@ -1153,6 +1257,23 @@ def create_router() -> APIRouter:
                 )
             except (httpx.HTTPError, ValueError) as e:
                 logger.warning(f'Wavelog connection test failed: {e}')
+                _cat_client_state['last_test_success'] = False
+                _cat_client_state['last_error'] = f'Wavelog request failed: {str(e)}'
+                if isinstance(e, httpx.HTTPStatusError) and e.response is not None and e.response.status_code in (401, 403):
+                    _cat_client_state['connection_state'].update_status(
+                        CatConnectionStatus.WARNING,
+                        error=f'Wavelog request failed: {str(e)}',
+                    )
+                elif _is_auth_related_error(str(e)):
+                    _cat_client_state['connection_state'].update_status(
+                        CatConnectionStatus.WARNING,
+                        error=f'Wavelog request failed: {str(e)}',
+                    )
+                else:
+                    _cat_client_state['connection_state'].update_status(
+                        CatConnectionStatus.DISCONNECTED,
+                        error=f'Wavelog request failed: {str(e)}',
+                    )
                 return WavelogTestResponse(
                     success=False,
                     message=f'Wavelog request failed: {str(e)}',
@@ -1161,6 +1282,12 @@ def create_router() -> APIRouter:
 
         except Exception as e:
             logger.error(f'Wavelog test failed: {e}')
+            _cat_client_state['last_test_success'] = False
+            _cat_client_state['last_error'] = f'Test failed: {str(e)}'
+            _cat_client_state['connection_state'].update_status(
+                CatConnectionStatus.DISCONNECTED,
+                error=f'Test failed: {str(e)}',
+            )
             return WavelogTestResponse(
                 success=False,
                 message=f'Test failed: {str(e)}',
@@ -1301,17 +1428,26 @@ def create_router() -> APIRouter:
             config = ConfigManager.get()
 
             if not config.wavelog.enabled:
+                _cat_client_state['connection_state'].update_status(
+                    CatConnectionStatus.DISCONNECTED,
+                    error='WaveLog is not enabled',
+                )
+                _cat_client_state['last_send_success'] = False
+                _cat_client_state['last_error'] = 'WaveLog is not enabled'
                 return {'success': False, 'message': 'WaveLog is not enabled'}
 
             # Client holen/erstellen
             client = await _get_or_create_cat_client()
             if not client:
+                _cat_client_state['last_send_success'] = False
                 return {'success': False, 'message': 'Failed to create CAT client'}
 
             # Status auslesen
             status = await _get_radio_status()
 
             if not status['frequency_hz'] or not status['mode']:
+                _cat_client_state['last_send_success'] = False
+                _cat_client_state['last_error'] = 'Radio status incomplete'
                 return {
                     'success': False,
                     'message': 'Radio status incomplete',
@@ -1325,6 +1461,25 @@ def create_router() -> APIRouter:
                 power_w=status['power_w'],
             )
 
+            _cat_client_state['last_send_success'] = success
+            if success:
+                _cat_client_state['last_error'] = None
+                _cat_client_state['connection_state'].update_status(CatConnectionStatus.CONNECTED)
+                _cat_client_state['last_update'] = asyncio.get_event_loop().time()
+            else:
+                if getattr(client, 'last_error_kind', None) == 'auth':
+                    _cat_client_state['last_error'] = 'WaveLog API-Key/Authentifizierung fehlgeschlagen'
+                    _cat_client_state['connection_state'].update_status(
+                        CatConnectionStatus.WARNING,
+                        error='WaveLog API-Key/Authentifizierung fehlgeschlagen',
+                    )
+                else:
+                    _cat_client_state['last_error'] = 'WaveLog Verbindung fehlgeschlagen'
+                    _cat_client_state['connection_state'].update_status(
+                        CatConnectionStatus.DISCONNECTED,
+                        error='WaveLog Verbindung fehlgeschlagen',
+                    )
+
             return {
                 'success': success,
                 'message': 'Status sent' if success else 'Failed to send status',
@@ -1334,6 +1489,44 @@ def create_router() -> APIRouter:
         except Exception as e:
             logger.error(f'Failed to send status: {e}')
             raise HTTPException(status_code=500, detail=str(e))
+
+    # ========================================================================
+    # LICENSE ENDPOINT
+    # ========================================================================
+
+    @router.get(
+        '/license',
+        response_model=LicenseResponse,
+        tags=['Info'],
+        summary='Lizenzinformation abrufen',
+    )
+    async def get_license() -> LicenseResponse:
+        """Gibt den Inhalt der LICENSE-Datei zurück."""
+        try:
+            # LICENSE-Datei aus Repo-Root lesen
+            license_path = Path(__file__).parent.parent.parent.parent / 'LICENSE'
+
+            if not license_path.exists():
+                logger.warning(f'LICENSE file not found at {license_path}')
+                raise HTTPException(
+                    status_code=404,
+                    detail='LICENSE file not found'
+                )
+
+            # Datei mit UTF-8 Encoding lesen
+            content = license_path.read_text(encoding='utf-8')
+            logger.debug(f'LICENSE file served ({len(content)} bytes)')
+
+            return LicenseResponse(content=content)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f'Failed to read LICENSE file: {e}')
+            raise HTTPException(
+                status_code=500,
+                detail=f'Failed to read LICENSE file: {str(e)}'
+            )
 
     return router
 
