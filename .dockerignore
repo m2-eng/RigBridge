@@ -32,7 +32,6 @@ tests/
 # Dokumentation
 docs/
 README.md
-LICENSE
 
 # Secrets & lokale Overrides
 .env

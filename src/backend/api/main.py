@@ -57,8 +57,11 @@ def create_app(
         """Lifespan-Handler für Startup/Shutdown Events."""
         # Startup: Starte Background-Tasks
         try:
-            asyncio.create_task(start_usb_health_check_task())
-            logger.info('USB health check task started')
+            if config.api.health_check_enabled:
+                asyncio.create_task(start_usb_health_check_task())
+                logger.info('USB health check task started')
+            else:
+                logger.info('USB health check task disabled by config')
         except Exception as e:
             logger.error(f'Failed to start USB health check task: {e}')
 
@@ -236,11 +239,22 @@ def create_app(
 
     # Statische Dateien: Frontend (nur wenn vorhanden)
     frontend_path = Path(__file__).parent.parent.parent / 'frontend'
+    favicon_path = Path(__file__).parent.parent.parent / 'favicon.png'
     if frontend_path.exists():
         # Mount static files aus src/frontend/assets und src/frontend/pages
         assets_path = frontend_path / 'assets'
         if assets_path.exists():
             app.mount('/assets', StaticFiles(directory=assets_path), name='assets')
+
+        @app.get('/favicon.png', include_in_schema=False)
+        async def serve_favicon():
+            """Serve application favicon for browser tabs."""
+            if favicon_path.exists():
+                return FileResponse(favicon_path, media_type='image/png')
+            return JSONResponse(
+                status_code=404,
+                content={'error': True, 'code': 'NOT_FOUND', 'message': 'Favicon not found'},
+            )
 
         # Fallback: Alle unbekannten Routes geben index.html zurück (SPA-Navigation)
         @app.get('/{full_path:path}')

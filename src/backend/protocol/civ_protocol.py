@@ -101,7 +101,7 @@ class ProtocolParser:
         root = protocol.get('protocol', protocol)
 
         # Frame-/Adress-Konfiguration laden
-        frame_cfg = root.get('config', {}).get('frame', {})
+        frame_cfg = root.get('frame', {})
         addresses = root.get('addresses', {})
         preamble = frame_cfg.get('preamble', [0xFE, 0xFE])
         if isinstance(preamble, list) and len(preamble) >= 2:
@@ -550,14 +550,6 @@ class CIVCommandExecutor:
         if not command:
             return {'raw_data': payload.hex()}, None
 
-        elif command_name == 'read_operating_frequency':
-            if len(payload) < 5:
-                return None, f'Response too short for frequency: {len(payload)} bytes'
-
-            bcd_bytes = payload[:5]
-            frequency = self._bcd_to_frequency(bcd_bytes)
-            return {'frequency': frequency, 'vfo': 'A'}, None
-
         elif command_name == 'read_s_meter':
             if len(payload) < 1:
                 return None, f'Response too short for S-meter: {len(payload)} bytes'
@@ -589,8 +581,9 @@ class CIVCommandExecutor:
                 return {'raw_data': payload.hex()}, None
 
             encoding = item['encoding']
+            encoding_method = encoding.get('method', 'direct') if isinstance(encoding, dict) else encoding
 
-            if encoding == 'bytes':
+            if encoding_method == 'bytes':
                 bytes_def = item.get('bytes', [])
                 if not bytes_def:
                     logger.error('No byte definitions found for bytes encoding, returning raw data')
@@ -601,26 +594,99 @@ class CIVCommandExecutor:
                     index = byte_def.get('index')
                     length = byte_def.get('length', 1)
                     name = byte_def.get('name', f'byte_{index}')
-                    encoding_method = byte_def.get('encoding', 'direct')
+                    encoding = byte_def.get('encoding', 'direct')
+                    encoding_method = encoding.get('method', 'direct') if isinstance(encoding, dict) else encoding
 
                     if index is  None and index + length > len(payload):
                         logger.error(f'Byte definition index/length out of bounds for payload: {index}+{length} > {len(payload)}')
                         return {'raw_data': payload.hex()}, None
 
-                    if encoding_method == 'enum':
-                        values = byte_def.get('values', {})
-                        raw_value = payload[index] if length == 1 else payload[index:index+length]
-                        if length == 1:
-                            decoded_value = values.get(raw_value, f'UNKNOWN(0x{raw_value:02X})')
-                        else:
-                            decoded_value = values.get(raw_value.hex(), f'UNKNOWN(0x{raw_value.hex()})')
-                        return_data[name] = decoded_value
+                    if encoding_method == 'direct':
+                        return_data[name] = payload[index:index + length].hex()
+
+                    elif encoding_method == 'enum':
+                        return_data[name] = self._decode_enum(byte_def, payload)
+
                     else:
                         return_data[name] = payload[index:index + length].hex()
 
                 return return_data, None
 
+            elif encoding_method == 'bcd_packed':
+                return_data = self._decode_bcd(item, payload)
+                return return_data, None
+
+            elif encoding_method == 'enum':
+                return_data[name] = self._decode_enum(byte_def, payload)
+
+            elif encoding_method == 'linear_scaled':
+                return_data = self._decode_linear_scaled(item, payload)
+                return return_data, None
+
             return {'raw_data': payload.hex()}, None
+
+    @staticmethod
+    def _decode_bcd(item: Dict[str, Any], payload: bytes) -> int:
+        """Dekodiert eine BCD-codierte Zahl aus Payload basierend auf Definition."""
+        if len(payload) < item.get('size', 0):
+            logger.error(f'Payload too short for BCD decoding: {len(payload)} bytes')
+            return 0
+
+        value = 0
+        for byte in item.get('bytes'):
+            index = byte['index']
+            raw_byte = payload[index]
+
+            # decode low nibble
+            low_factor = byte['low_nibble']['weight']
+            low_digit = raw_byte & 0x0F
+            value += low_digit * low_factor
+
+            # decode high nibble
+            high_factor = byte['high_nibble']['weight']
+            high_digit = (raw_byte >> 4) & 0x0F
+            value += high_digit * high_factor
+
+
+        return {item.get('name', 'bcd_value'): value}
+
+    @staticmethod
+    def _decode_enum(definition: Dict[str, Any], payload: bytes) -> str:
+        """Dekodiert einen Enum-Wert basierend auf Definition und Payload."""
+        index = definition.get('index')
+        length = definition.get('length', 1)
+        enum_def = definition.get('values', {})
+
+        raw_value = payload[index] if length == 1 else payload[index:index+length]
+        if length == 1:
+            decoded_value = enum_def.get(raw_value, f'UNKNOWN(0x{raw_value:02X})')
+        else:
+            decoded_value = enum_def.get(raw_value.hex(), f'UNKNOWN(0x{raw_value.hex()})')
+
+        return decoded_value
+
+    @staticmethod
+    def _decode_linear_scaled(item: Dict[str, Any], payload: bytes) -> Dict[str, Any]:
+        """Dekodiert einen linear skalierten Wert basierend auf Definition und Payload."""
+        scaling = item.get('scaling', {})
+        points_raw = scaling.get('raw', [])
+        points_physical = scaling.get('physical', [])
+
+        if len(points_raw) != len(points_physical):
+            logger.error('Scaling definition error: raw and physical points length mismatch')
+            return {item.get('name', 'scaled_value'): None}
+
+        raw_value = int.from_bytes(payload, byteorder='big')  # Annahme: big-endian, kann je nach Definition variieren
+        scaled_value = None
+        for i in range(len(points_raw) - 1):
+            if points_raw[i] <= raw_value <= points_raw[i + 1]:
+                # Linear interpolation
+                x0, y0 = points_raw[i], points_physical[i]
+                x1, y1 = points_raw[i + 1], points_physical[i + 1]
+                scaled_value = y0 + (raw_value - x0) * (y1 - y0) / (x1 - x0)
+                break
+
+        return {item.get('name', 'scaled_value'): scaled_value}
 
     @staticmethod
     def _frequency_to_bcd(frequency_hz: int) -> bytes:
@@ -638,25 +704,6 @@ class CIVCommandExecutor:
             bcd.append((d1 << 4) | d0)
 
         return bytes(bcd)
-
-    @staticmethod
-    def _bcd_to_frequency(bcd_bytes: bytes) -> int:
-        """Konvertiert BCD CI-V Frequenz zurück in Hz."""
-        if len(bcd_bytes) < 5:
-            return 0
-
-        frequency = 0
-        factor = 1
-        for byte in bcd_bytes[:5]:
-            low_digit = byte & 0x0F
-            high_digit = (byte >> 4) & 0x0F
-            frequency += low_digit * factor
-            factor *= 10
-            frequency += high_digit * factor
-            factor *= 10
-
-        return frequency
-
 
 # ============================================================================
 # CIVProtocol - BaseProtocol Implementation
@@ -863,6 +910,8 @@ class CIVProtocol(BaseProtocol):
                 payload = frame[payload_start:-1]  # Ohne Terminator
 
                 # Parsed data vorbereiten (vereinfacht)
+                parse_data = self._executor._decode_response(matching_command.name, payload)  # Vorbereiten für zukünftiges Parsing
+
                 parsed_data = {
                     'command': matching_command.name,
                     'raw_payload': payload.hex().upper(),
@@ -883,6 +932,15 @@ class CIVProtocol(BaseProtocol):
     # ========================================================================
     # CI-V Spezifische Methoden
     # ========================================================================
+
+    def set_addresses(self, controller_address: int, radio_address: int) -> None:
+        """Setzt Controller- und Radio-Adresse zur Laufzeit (override YAML-Defaults)."""
+        self._parser.controller_addr = int(controller_address) & 0xFF
+        self._parser.radio_addr = int(radio_address) & 0xFF
+        logger.info(
+            f'CI-V addresses configured: controller=0x{self._parser.controller_addr:02X}, '
+            f'radio=0x{self._parser.radio_addr:02X}'
+        )
 
     def get_radio_address(self) -> int:
         """

@@ -10,6 +10,7 @@ Keine Race Conditions zwischen Health-Check und API-Befehlen.
 import asyncio
 import httpx
 import logging
+import yaml
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from typing import Any, Optional, Dict, List
@@ -53,6 +54,11 @@ def _get_or_create_protocol_manager() -> ProtocolManager:
             protocol = CIVProtocol(
                 protocol_file=protocol_file,
                 manufacturer_file=manufacturer_file
+            )
+            # Konfigurierte Adressen aus config.json haben Vorrang vor YAML-Defaults.
+            protocol.set_addresses(
+                config.device.controller_address,
+                config.device.radio_address,
             )
             logger.debug(f'CIVProtocol initialized for {protocol_file}')
 
@@ -257,6 +263,8 @@ class DeviceInfo(BaseModel):
     name: str = Field(description='Gerätename (z.B. "Icom IC-905")')
     manufacturer: str = Field(description='Hersteller (z.B. "icom")')
     protocol_file: str = Field(description='YAML-Protokoll-Datei ohne Erweiterung')
+    default_controller: int = Field(description='Standard Controller-Adresse aus frame.default_controller')
+    default_radio: int = Field(description='Standard Funkgerät-Adresse aus frame.default_radio')
 
 
 class StatusResponse(BaseModel):
@@ -327,6 +335,7 @@ class USBConfigUpdate(BaseModel):
 class APIConfigUpdate(BaseModel):
     host: Optional[str] = None
     port: Optional[int] = None
+    health_check_enabled: Optional[bool] = None
     enable_https: Optional[bool] = None
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
@@ -355,6 +364,8 @@ class DeviceConfigUpdate(BaseModel):
     name: Optional[str] = None
     manufacturer: Optional[str] = None
     protocol_file: Optional[str] = None
+    controller_address: Optional[int] = None
+    radio_address: Optional[int] = None
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -363,6 +374,32 @@ class ConfigUpdateRequest(BaseModel):
     wavelog: Optional[WavelogConfigUpdate] = None
     secret_provider: Optional[SecretProviderConfigUpdate] = None
     device: Optional[DeviceConfigUpdate] = None
+
+
+def _parse_yaml_int(value: Any, fallback: int) -> int:
+    """Parst int oder Hex-String robust."""
+    if value is None:
+        return fallback
+    if isinstance(value, str):
+        return int(value, 0)
+    return int(value)
+
+
+def _read_device_defaults(protocol_path: Path) -> tuple[int, int]:
+    """Liest frame.default_controller/default_radio aus einer Geräte-YAML."""
+    default_controller = 0xE0
+    default_radio = 0xA4
+
+    with open(protocol_path, 'r', encoding='utf-8') as f:
+        raw = yaml.safe_load(f) or {}
+
+    root = raw.get('protocol', raw)
+    frame = root.get('frame', {}) if isinstance(root, dict) else {}
+
+    return (
+        _parse_yaml_int(frame.get('default_controller'), default_controller),
+        _parse_yaml_int(frame.get('default_radio'), default_radio),
+    )
 
 
 # ============================================================================
@@ -894,6 +931,8 @@ def create_router() -> APIRouter:
         if 'api' in payload:
             api_values = payload['api']
             log_level_changed = False
+            health_check_changed = False
+            new_health_check_enabled = config.api.health_check_enabled
 
             if 'log_level' in api_values:
                 try:
@@ -917,7 +956,18 @@ def create_router() -> APIRouter:
 
             for key, value in api_values.items():
                 if key != 'log_level':
+                    if key == 'health_check_enabled':
+                        health_check_changed = (config.api.health_check_enabled != value)
+                        new_health_check_enabled = value
                     setattr(config.api, key, value)
+
+            if health_check_changed:
+                if new_health_check_enabled:
+                    logger.info('Health check aktiviert - starte Background-Task')
+                    await start_usb_health_check_task()
+                else:
+                    logger.info('Health check deaktiviert - stoppe Background-Task')
+                    await stop_usb_health_check_task()
 
         if 'wavelog' in payload:
             for key, value in payload['wavelog'].items():
@@ -934,8 +984,32 @@ def create_router() -> APIRouter:
                 setattr(config.secret_provider, key, value)
 
         if 'device' in payload:
-            for key, value in payload['device'].items():
+            device_values = payload['device']
+            device_selection_changed = any(
+                k in device_values for k in ('manufacturer', 'protocol_file')
+            )
+
+            for key, value in device_values.items():
                 setattr(config.device, key, value)
+
+            # Bei Gerätewechsel Standard-Adressen aus der gewählten YAML verwenden,
+            # falls keine expliziten Adressen im Request übergeben wurden.
+            if device_selection_changed:
+                try:
+                    default_controller, default_radio = _read_device_defaults(
+                        config.device.get_protocol_path()
+                    )
+
+                    if 'controller_address' not in device_values:
+                        config.device.controller_address = default_controller
+                    if 'radio_address' not in device_values:
+                        config.device.radio_address = default_radio
+                except Exception as e:
+                    logger.warning(f'Could not read device defaults from YAML: {e}')
+
+            # ProtocolManager muss nach Geräte-/Adressänderung neu aufgebaut werden.
+            _global_protocol_manager = None
+            logger.debug('ProtocolManager invalidiert (Device-Config aktualisiert)')
 
         ConfigManager.save()
 
@@ -1363,10 +1437,17 @@ def create_router() -> APIRouter:
                             if protocol_file.name not in ['manufacturer.yaml', 'meta.yaml']:
                                 device_name = protocol_file.stem
                                 manufacturer = manufacturer_dir.name
+                                try:
+                                    default_controller, default_radio = _read_device_defaults(protocol_file)
+                                except Exception as e:
+                                    logger.warning(f'Could not read defaults for {protocol_file}: {e}')
+                                    default_controller, default_radio = 0xE0, 0xA4
                                 devices.append(DeviceInfo(
                                     name=f'{manufacturer.upper()} {device_name.upper()}',
                                     manufacturer=manufacturer,
                                     protocol_file=device_name,
+                                    default_controller=default_controller,
+                                    default_radio=default_radio,
                                 ))
 
             logger.info(f'Listed {len(devices)} available devices')

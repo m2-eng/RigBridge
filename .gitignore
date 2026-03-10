@@ -133,3 +133,5 @@ coverage.xml
 # ──────────────────────────────────────────────
 # Docker-Volumes und lokale Override-Configs werden nicht versioniert
 docker-compose.override.yml
+docker/offline
+docker/cnt

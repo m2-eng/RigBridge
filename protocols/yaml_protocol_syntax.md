@@ -20,7 +20,9 @@ Diese Aufteilung ermöglicht:
 
 ## 1. Protokoll-Grundstruktur
 
-### 1.1 Grundgerüst
+### 1.1 Grundgerüst des Schemas
+
+Die YAML-Protokolldefinition besteht aus einem Wurzel-Element `protocol` mit folgenden Hauptbestandteilen:
 
 ```yaml
 protocol:
@@ -28,202 +30,49 @@ protocol:
   model: "ic905"
   manufacturer: "Icom"
   description: "Multi-band transceiver with complete CI-V command set"
-  
-  config:
-    timeouts:
-      command_response: 1.0      # Timeout in Sekunden für Befehlsantworten
-      session_idle: 300.0         # Session-Leerlauf-Timeout in Sekunden
-    
-    frame:
-      preamble: [0xFE, 0xFE]     # Frame-Startbytes (ICOM-Standard)
-      terminator: 0xFD            # Frame-Endbyte
-      default_controller: 0xE0    # Controller-Adresse (Computer)
-      default_radio: 0xAC         # Funkgeräte-Adresse (IC-905)
-  
-  addresses:
-    controller: 0xE0
-    radio: 0xAC
+
+  frame:
+    preamble: [0xFE, 0xFE]
+    terminator: 0xFD
+    default_controller: 0xE0
+    default_radio: 0xAC
+
+  commands:
+    read_operating_frequency:
+      cmd: 0x03
+      # ... weitere Befehlsdefinitionen
 ```
 
-**Wichtige Felder:**
-- **name, model, manufacturer, description**: Metadaten zur Identifikation
-- **timeouts**: Steuert das Kommunikationsverhalten
-- **frame**: Definiert das CI-V-Frame-Format (ICOM nutzt Präambel 0xFE 0xFE, Terminator 0xFD)
-- **addresses**: CI-V-Adressen für Gerät und Controller
+### 1.2 Protocol-Element (Wurzelebene)
 
----
+Das `protocol`-Element enthält die Metadaten und strukturellen Definitionen für ein Funkgerätemodell:
 
-## 2. Datentypen (icom.yaml)
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `name` | string | Ja | Vollständiger Name des Funkgeräts (z.B. "Icom IC-905") |
+| `model` | string | Ja | Modellbezeichnung, wird als Dateiname verwendet (z.B. "ic905") |
+| `manufacturer` | string | Ja | Hersteller des Geräts (z.B. "Icom", "Yaesu", "Kenwood") |
+| `description` | string | Nein | Kurzbeschreibung des Geräts und seiner Fähigkeiten |
+| `frame` | object | Ja | Definiert die Frame-Struktur der seriellen Kommunikation |
+| `commands` | object | Ja | Sammlung aller verfügbaren Befehle für dieses Gerät |
 
-### 2.1 Zweck
+### 1.3 Frame-Element (CI-V Frame-Struktur)
 
-Datentypen definieren **wie Binärdaten für bestimmte Parameter kodiert/dekodiert werden**. Sie sind in `icom.yaml` gespeichert und können von mehreren Gerätemodellen wiederverwendet werden.
+Das `frame`-Element definiert das Kommunikationsprotokoll auf Byte-Ebene:
 
-### 2.2 Struktur
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `preamble` | array[int] | Ja | Frame-Startbytes, die jeder Nachricht vorangestellt werden<br/>Beispiel: `[0xFE, 0xFE]` (ICOM-Standard) |
+| `terminator` | int | Ja | Frame-Endbyte, das jede Nachricht abschließt<br/>Beispiel: `0xFD` (ICOM-Standard) |
+| `default_controller` | int | Ja | Standard-Adresse des steuernden Computers<br/>Beispiel: `0xE0` (ICOM-Standard für PC) |
+| `default_radio` | int | Ja | Standard-Adresse des Funkgeräts<br/>Beispiel: `0xAC` (IC-905), `0x94` (IC-7300) |
 
-```yaml
-data_types:
-  bcd5_freq:
-    name: "5-Byte BCD Frequency"
-    size: 5
-    description: "BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz"
-    resolution_hz: 1
-    bytes:
-      - index: 0
-        high_nibble: { place: "10Hz",   weight_hz: 10 }
-        low_nibble:  { place: "1Hz",    weight_hz: 1  }
-      - index: 1
-        high_nibble: { place: "1kHz",   weight_hz: 1000 }
-        low_nibble:  { place: "100Hz",  weight_hz: 100  }
-      - index: 2
-        high_nibble: { place: "100kHz", weight_hz: 100000 }
-        low_nibble:  { place: "10kHz",  weight_hz: 10000  }
-      - index: 3
-        high_nibble: { place: "10MHz",  weight_hz: 10000000 }
-        low_nibble:  { place: "1MHz",   weight_hz: 1000000  }
-      - index: 4
-        high_nibble: { place: "1GHz",   weight_hz: 1000000000 }
-        low_nibble:  { place: "100MHz", weight_hz: 100000000  }
-    encoding:
-      method: "bcd_packed"
-      byte_order: "little_endian"
-      example: "144.500 MHz → 00 00 50 44 01"
-```
+**Hinweis zu Adressen:**  
+Die tatsächlich verwendeten CI-V-Adressen (`controller` und `radio`) werden nicht in der YAML-Datei, sondern in der `config.json` gespeichert. Dadurch können Benutzer diese über die Web-Oberfläche konfigurieren, falls vom Standard abweichende Adressen benötigt werden. Die `default_*`-Felder im Frame dienen nur als Referenzwerte.
 
-**Warum strukturiert statt Freitext?**
+### 1.4 Commands-Element (Befehlssammlung)
 
-Das frühere Schema nutzte eine einfache String-Notation:
-```yaml
-# ALT – nicht maschinenlesbar
-format:
-  byte0: "10Hz digit | 1Hz digit"
-```
-Das `|`-Zeichen hatte keine definierte Semantik und konnte nicht automatisch geparst werden.
-Das aktuelle `bytes`-Format macht jede Nibble-Position explizit und maschinenlesbar:
-- **`index`**: Byte-Position (0 = niederwertigstes Byte, `little_endian`)
-- **`high_nibble` / `low_nibble`**: oberes / unteres Halbbyte des Bytes
-- **`place`**: Lesbare Bezeichnung der Stelle (z. B. `"10Hz"`)
-- **`weight_hz`**: Numerischer Stellenwert in Hz — direkt vom Parser nutzbar
-
-**Wichtige Felder:**
-- **name**: Menschenlesbarer Typname
-- **size**: Länge in Bytes
-- **description**: Zweck, Einschränkungen und Bereich
-- **resolution_hz**: Kleinste darstellbare Frequenzänderung in Hz
-- **bytes**: Strukturierte Nibble-Beschreibung (maschinenlesbar)
-- **encoding**: Kodierungsmethode und Beispiel für Entwickler
-
-### 2.3 Gängige Datentypen
-
-#### Binary Coded Decimal (BCD)
-
-| Typ | Größe | Verwendung | Bereich | Auflösung |
-|------|------|---------|---------|-----------|
-| `bcd3_freq` | 3 bytes | Offset-Frequenzen | 0 – 99.9999 MHz | 100 Hz |
-| `bcd5_freq` | 5 bytes | Haupt-Frequenzen | 0 – 9.999999999 GHz | 1 Hz |
-| `bcd6_freq` | 6 bytes | Erw. Frequenzen (10-GHz-Band) | 0 – 99.999999999 GHz | 1 Hz |
-
-**Beispiel**: 144.500 MHz als BCD5
-```
-Frequenz: 144.500 MHz = 144.500.000 Hz
-BCD-Bytes: 00 00 50 44 01
-  byte[0]: 0x00  high_nibble=10Hz=0,  low_nibble=1Hz=0
-  byte[1]: 0x00  high_nibble=1kHz=0,  low_nibble=100Hz=0
-  byte[2]: 0x50  high_nibble=100kHz=5, low_nibble=10kHz=0  → 500.000 Hz
-  byte[3]: 0x44  high_nibble=10MHz=4, low_nibble=1MHz=4    → 44.000.000 Hz
-  byte[4]: 0x01  high_nibble=1GHz=0,  low_nibble=100MHz=1  → 100.000.000 Hz
-Summe: 100.000.000 + 44.000.000 + 500.000 = 144.500.000 Hz ✓
-```
-
-#### Skalierungstypen
-
-```yaml
-uint8_percent:
-  name: "Percentage 0–100%"
-  size: 1
-  description: "Prozentwert 0–100%, als 0x00–0xFF linear kodiert"
-  encoding:
-    method: "linear_scaled"
-  scaling:
-    type: "linear"
-    unit: "%"
-    raw:      { min: 0,   max: 255   }
-    physical: { min: 0.0, max: 100.0 }
-  range:
-    raw_min: 0
-    raw_max: 255
-    physical_min: 0.0
-    physical_max: 100.0
-    physical_unit: "%"
-
-uint8_cw_pitch:
-  name: "CW Pitch Frequency 300–900 Hz"
-  size: 1
-  description: "CW-Tonfrequenz 300–900 Hz, als 0x00–0xFF linear kodiert"
-  encoding:
-    method: "linear_scaled"
-  scaling:
-    type: "linear"
-    unit: "Hz"
-    raw:      { min: 0,     max: 255   }
-    physical: { min: 300.0, max: 900.0 }
-  range:
-    raw_min: 0
-    raw_max: 255
-    physical_min: 300.0
-    physical_max: 900.0
-    physical_unit: "Hz"
-```
-
-**Kernkonzept Scaling**: Mapt einen Raw-Byte-Bereich (0–255) auf physikalische Werte.
-
-| Feld | Bedeutung |
-|------|-----------|
-| `scaling.type` | `linear`, `linear_bipolar` — Interpolationsart |
-| `scaling.unit` | Physikalische Einheit als maschinenlesbarer String |
-| `scaling.raw` | Raw-Bereich (immer 0–255 für uint8) |
-| `scaling.physical` | Physikalischer Min/Max-Bereich |
-| `range` | Redundante Kurzform für schnellen Zugriff im Parser |
-| `encoding.method` | `linear_scaled` (hat Skalierung), `direct` (kein Mapping) |
-
-> **Hinweis**: Das frühere Schema speicherte Formeln als Strings (`"hz = 300 + (value / 255) * 600"`).
-> Das ist nicht validierbar und erfordert `eval()`. Das strukturierte `scaling`-Objekt erlaubt
-> direkte Auswertung ohne String-Parsing.
-
-#### Aufzählungstypen (Enumerations)
-
-```yaml
-operating_mode:
-  name: "Operating Mode"
-  size: 2
-  description: "Betriebsart und Filterauswahl jeweils als 1-Byte-Enum-Wert"
-  bytes:
-    - index: 0
-      role: "mode"
-      description: "Betriebsart (LSB, USB, AM, FM, …)"
-    - index: 1
-      role: "filter"
-      description: "Filterauswahl (FIL1, FIL2, FIL3)"
-  encoding:
-    method: "enum_pair"
-  values:
-    modes:
-      0x00: "LSB"
-      0x01: "USB"
-      0x02: "AM"
-      0x03: "CWR"
-      # ... weitere Modes
-    filters:
-      0x00: "FIL1"
-      0x01: "FIL2"
-      0x02: "FIL3"
-```
-
----
-
-## 3. Befehle (ic905.yaml)
-
-### 3.1 Grundstruktur eines Befehls
+Das `commands`-Element ist ein Objekt, dessen Schlüssel die individuellen Befehlsnamen sind. Jeder Befehlsname (z.B. `read_operating_frequency`, `set_af_level`) definiert einen CI-V-Befehl mit seiner spezifischen Struktur.
 
 ```yaml
 commands:
@@ -231,417 +80,296 @@ commands:
     cmd: 0x03
     subcmd: null
     description: "Read operating frequency"
-    request:
-      structure: []              # Keine Anfragedaten erforderlich
-    response:
-      alternatives:
-        - name: "frequency"
-          type: "bcd5_freq"
-          description: "Frequenz als BCD (10 Stellen)"
-        - name: "frequency"
-          type: "bcd6_freq"
-          description: "Frequenz als BCD (12 Stellen für 10-GHz-Band)"
+    # ... weitere Befehlsdetails
+
+  set_af_level:
+    cmd: 0x14
+    subcmd: 0x01
+    description: "Set AF level"
+    # ... weitere Befehlsdetails
 ```
 
-### 3.2 Befehlsfelder im Überblick
-
-| Feld | Typ | Bedeutung |
-|------|-----|-----------|
-| **cmd** | hex | Primäres Befehlsbyte (0x00–0xFF) |
-| **subcmd** | hex oder Array | Unterbefehl(e). Möglich: `null`, `0xXX` oder `[0xXX, 0xYY, ...]` |
-| **description** | string | Menschenlesbarer Zweck |
-| **request** | object | Datenstruktur zum Senden des Befehls |
-| **response** | object | Erwartete Antwortstruktur |
-| **data** | string | Zusätzliche Metadaten (z. B. „See p. 18“ als Manual-Verweis) |
-
-### 3.3 Anfrage- und Antwortstrukturen
-
-#### Einfache Anfrage (keine Parameter)
-
-```yaml
-cancel_scan:
-  cmd: 0x0E
-  subcmd: 0x00
-  description: "Cancel scan"
-  request:
-    structure: []              # Leer – keine Parameter
-  response: *status_ok_ng      # Referenz auf YAML-Anchor
-```
-
-#### Anfrage mit Parametern
-
-```yaml
-set_af_level:
-  cmd: 0x14
-  subcmd: 0x01
-  description: "Set AF level"
-  request:
-    structure:
-      - name: "AF_level"
-        type: "uint8_percent"
-        description: "Audio-Frequenzpegel (0–100%)"
-  response: *status_ok_ng
-```
-
-#### Antwort mit Alternativen
-
-```yaml
-read_operating_frequency:
-  cmd: 0x03
-  description: "Read operating frequency"
-  response:
-    alternatives:
-      - type: "bcd5_freq"
-        description: "Standard-Band-Frequenzen"
-      - type: "bcd6_freq"
-        description: "10-GHz-Band-Frequenzen"
-```
-
-### 3.4 Mehrstufige Unterbefehle (Erweiterte Einstellungen)
-
-Der IC-905 verfügt über komplexe verschachtelte Unterbefehle in der Befehlsgruppe 0x1A:
-
-```yaml
-ext_setting_005:
-  cmd: 0x1A
-  subcmd: [0x05, 0x00, 0x01]    # Dreistufiger Unterbefehl
-  description: "RX > SSB > Send/read RX HPF/LPF settings"
-  data: "See p. 20"
-```
-
-**Lesart:**
-- **cmd**: 0x1A (Erweiterte Einstellungen)
-- **subcmd[0]**: 0x05 (Einstellungsgruppe)
-- **subcmd[1]**: 0x00 (RX-Einstellungen)
-- **subcmd[2]**: 0x01 (SSB-Modus)
-- **data**: „See p. 20“ = Noch nicht vollständig dokumentiert, siehe Handbuch Seite 20
+Die Befehlsnamen folgen der Konvention `snake_case` und sollten die Funktion des Befehls klar beschreiben. Die detaillierte Struktur einzelner Befehle wird im Abschnitt [2. Befehle](#2-befehle-ic905yaml) beschrieben
 
 ---
 
-## 4. YAML-Templates & Anchors
+## 2. Befehle
 
-Wiederverwendbare Definitionen mit YAML-Anchors (`&`) und Aliases (`*`):
+### 2.1 Grundgerüst des Schemas
+
+Die Befehlsdefinitionen stehen im Element `protocol.commands` in z.B. `protocols/manufacturers/icom/ic905.yaml`. Jeder Schlüssel unterhalb von `commands` repräsentiert genau einen logischen CI-V-Befehl.
 
 ```yaml
-templates:
-  status_ok_ng: &status_ok_ng         # Definieren mit &
-    type: "alternatives"
-    description: "Returns either success or error"
-    alternatives:
-      - name: "success"
-        value: 0xFB
-      - name: "error"
-        value: 0xFA
+protocol:
+  commands:
+    read_operating_frequency:
+      cmd: 0x03
 
+    set_af_level:
+      cmd: 0x14
+```
+
+### 2.2 Command-Element (`commands`)
+
+Ein Befehl ist ein YAML-Objekt mit einem sprechenden `snake_case`-Namen als Schlüssel. Im aktuell aktiven Stand von `ic905.yaml` sind für die nicht auskommentierten Befehle vor allem die Felder `cmd` und optional `subcmd` relevant.
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `cmd` | int (hex) | Ja | Primäres CI-V-Befehlsbyte (z.B. `0x14`) |
+| `subcmd` | int, array[int] oder `null` | Nein | Unterbefehl zur Differenzierung innerhalb eines `cmd` |
+| `description` | string | Nein | Fachliche Beschreibung des Befehlszwecks |
+| `request` | array[object] | Nein | Liste der Nutzdatenfelder, die an das Gerät gesendet werden |
+| `response` | array[object] | Nein | Liste der erwarteten Nutzdatenfelder vom Gerät |
+| `data` | string | Nein | Zusätzlicher Hinweis, z.B. Verweis auf Manual-Seiten |
+
+Viele logische Befehle teilen sich dasselbe `cmd`-Byte. Die fachliche Differenzierung erfolgt über den Befehlsnamen und in späteren Ausbaustufen über `subcmd`-Strukturen.
+
+Beispiel:
+- `cmd: 0x14` umfasst zahlreiche Level-/Audio-/Gain-Befehle.
+- `cmd: 0x16` umfasst Funktionsschalter (z.B. `preamp`, `vox`, `dtcs`).
+
+**Namenskonventionen für Befehle**
+
+Die aktiven Befehlsnamen folgen überwiegend diesen Mustern:
+
+| **Muster** | **Bedeutung** | **Beispiele** |
+|-----------|----------------|---------------|
+| `read_*` | Zustand/Wert vom Gerät lesen | `read_operating_frequency`, `read_rf_gain` |
+| `send_*` | Zustand/Wert am Gerät setzen/senden | `send_frequency_offset`, `send_attenuator_off` |
+| Aktionsname ohne Präfix | Direkter Geräte-Trigger | `power_off`, `memory_write`, `exchange_vfo` |
+
+**Hinweis zu read/send:**
+Die Unterscheidung mittels read/send erfolgt dadurch, da der Befehlswert für beides verwendet werden kann.
+
+### 2.3 Request-Element (`request`)
+
+Das `request`-Element ist ein **Array** von Feldobjekten, die die Nutzdaten beschreiben, die beim Senden eines Befehls an das Gerät übermittelt werden. Mit `request: []` wird angegeben, dass der Befehl keine Nutzdaten benötigt.
+
+**Feldstruktur innerhalb von `request`/`response`-Arrays:**
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `name` | string | Ja | Feldname in Klartext (z.B. `"frequency"`, `"mode"`) |
+| `type` | string | Ja | Referenz zu einem Datentyp aus `icom.yaml` (z.B. `"bcd5_freq"`, `"operating_mode"`) |
+| `description` | string | Nein | Erklärende Beschreibung des Feldes |
+
+**Typische Formen:**
+- `request: []` — Der Befehl erfordert keine Nutzdaten beim Senden (z.B. `read_operating_frequency`).
+- `request: [...]` — Ein oder mehrere Felder, die gesendet werden (noch nicht in aktiven Befehlen vorhanden).
+
+**Beispiel**
+
+```yaml
 commands:
-  power_off:
-    cmd: 0x18
-    response: *status_ok_ng            # Verwenden mit *
+  receive_frequency_data:
+    cmd: 0x00
+    request: []
+    response:
+      - name: "frequency"
+        type: "bcd5_freq"
+        description: "Receive the operating frequency in BCD"
+      - name: "frequency"
+        type: "bcd6_freq"
+        description: "Receive the operating frequency in BCD (10 GHz band)"
 ```
 
-**Vorteil**: Einmal definieren, überall verwenden. Änderungen wirken sich automatisch auf alle Verwendungen aus.
+### 2.4 Response-Element (`response`)
+
+Das `response`-Element ist ein **Array** von Feldobjekten, die die Nutzdaten beschreiben, die als Antwort vom Gerät erwartet werden.
+
+Das Array kann mehrere Alternativen enthalten (wie in `read_operating_frequency`), falls das Gerät je nach Modus unterschiedliche Antwortformate sendet.
+
+**Feldstruktur innerhalb von `request`/`response`-Arrays** (s. Tabelle in Abschnitt 2.5):
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `name` | string | Ja | Feldname in Klartext (z.B. `"frequency"`, `"mode"`) |
+| `type` | string | Ja | Referenz zu einem Datentyp aus `icom.yaml` (z.B. `"bcd5_freq"`, `"operating_mode"`) |
+| `description` | string | Nein | Erklärende Beschreibung des Feldes |
+
+**Typische Formen:**
+- `response: []` — Keine Antwort erwartet (noch nicht in aktiven Befehlen dokumentiert).
+- `response: [...]` — Ein oder mehrere Felder in der Antwort (wie `read_operating_frequency`).
+
+**Beispiel**
+
+```yaml
+commands:
+  read_operating_frequency:
+    cmd: 0x03
+    request: []
+    response:
+      - name: "frequency"
+        type: "bcd5_freq"
+        description: "Read the operating frequency in BCD"
+      - name: "frequency"
+        type: "bcd6_freq"
+        description: "Read the operating frequency in BCD (10 GHz band)"
+```
 
 ---
 
-## 5. Vollständiges Beispiel: Neuen Befehl hinzufügen
+## 3. Datentypen
 
-### Szenario: Befehl „S-Meter-Pegel lesen“ hinzufügen
+### 3.1 Grundgerüst des Schemas
 
-#### Schritt 1: Befehl identifizieren
-
-Aus der IC-905-Referenz:
-- Befehl: 0x15 (Messgerät-Ablesungen)
-- Unterbefehl: 0x02 (S-Meter)
-- Antwort: 1 Byte (0x00=S0, 0x78=S9, 0xF1=S9+60 dB)
-
-#### Schritt 2: Datentyp erstellen/aktualisieren (icom.yaml)
+Gemeinsame Datentypen werden in z.B. `protocols/manufacturers/icom.yaml` - für den entsprechenden Hersteller - unterhalb des Wurzel-Elements `data_types` definiert. Jeder Eintrag beschreibt Aufbau, Kodierung und Bedeutung eines wiederverwendbaren Formats.
 
 ```yaml
 data_types:
-  uint8_s_meter:
-    name: "S-Meter Reading"
+  uint8:
     size: 1
-    description: "S-Meter-Pegel 0–255 mit bekannten Referenzpunkten (nicht rein linear)"
+    description: "Single byte 0x00-0xFF"
+    encoding: "direct"
+    range:
+      min: 0
+      max: 255
+
+  bcd5_freq:
+    name: "frequency"
+    size: 5
+    description: "5-Byte BCD-kodierte Frequenz"
+    bytes:
+      - index: 0
+        high_nibble: { place: "10Hz", weight: 10 }
+        low_nibble:  { place: "1Hz",  weight: 1 }
     encoding:
-      method: "lookup_scaled"
-    scaling:
-      type: "piecewise_linear"
-      unit: "dBm"
-      reference_points:
-        - { raw: 0x00, label: "S0",     dbuv: 0   }
-        - { raw: 0x78, label: "S9",     dbuv: 74  }
-        - { raw: 0xF1, label: "S9+60",  dbuv: 134 }
-      note: "Interpolation linear zwischen den Stützpunkten"
+      method: "bcd_packed"
+      byte_order: "little_endian"
 ```
 
-#### Schritt 3: Befehlseintrag erstellen (ic905.yaml)
+### 3.2 Datentyp-Element (`data_types`)
+
+Ein Datentyp ist ein YAML-Objekt mit einem frei wählbaren Schlüssel (z.B. `uint8`, `operating_mode`, `bcd6_freq`). Dieser Schlüssel wird in `ic905.yaml` als Typreferenz verwendet.
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `name` | string | Nein | Name des Typs (z.B. `"frequency"`) überschreibt den im Befehl angegebenen Namen und wird als Rückgabenamen im Code verwendet|
+| `size` | int | Ja | Länge in Bytes |
+| `description` | string | Ja | Beschreibung des Inhalts |
+| `encoding` | string | Ja | Kodierungsverfahren, wird im Code zur Auswahl der entsprechenden (De-)Codier Funktion verwendet. |
+| `range` | object | Nein | Wertebereich (roh und/oder physikalisch) |
+| `scaling` | object | Nur bei z.B. Kennfeldern | Abbildung zwischen Rohwert und physikalischem Wert |
+| `bytes` | array[object] | Nein | Byteweise Struktur für zusammengesetzte Typen |
+| `note` | string | Nein | Zusätzlicher Hinweis, z.B. einsatzabhängige Besonderheiten |
+
+**Referenzierung in `ic905.yaml`:**  
+Datentypen werden über ihren Schlüssel verwendet, z.B. `type: "bcd5_freq"` oder `type: "operating_mode"`. In diesem Abschnitt wird nur der Typaufbau beschrieben; die Befehlsstruktur wird im Commands-Abschnitt behandelt.
+
+### 3.3 Byte-Struktur (`bytes`)
+
+Für strukturierte Datentypen (z.B. `status_ok_ng`, `operating_mode`, `bcd*_freq`) kann der Byte-Aufbau explizit beschrieben werden.
+
+| **Feld** | **Typ** | **Pflicht** | **Beschreibung** |
+|----------|---------|-------------|------------------|
+| `index` | int | Ja | Byteposition innerhalb des Datentyps (0-basiert) |
+| `length` | int | Nein | Länge des Feldes in Bytes (typisch `1`) |
+| `name` | string | Nein | Feldname innerhalb des Datentyps |
+| `encoding` | string | Nein | Kodierung auf Feldebene (z.B. `enum`) |
+| `values` | object | Nein | Enum-Zuordnung für festspezifizierte Werte |
+| `high_nibble` | object | Nein | Bedeutung des oberen Nibbles bei BCD-Typen |
+| `low_nibble` | object | Nein | Bedeutung des unteren Nibbles bei BCD-Typen |
+| `description` | string | Nein | Beschreibung des Bytefeldes |
+
+### 3.4 Kodierungsarten
+
+In `icom.yaml` werden aktuell folgende Kodierungsmuster verwendet:
+
+| **Kodierung** | **Verwendung** | **Beispiele** |
+|---------------|----------------|---------------|
+| `direct` | Unskalierte Rohwerte | `uint8` |
+| `enum` | Feste Wertemengen | `boolean` |
+| `linear_scaled` | Lineare Abbildung Rohwert ↔ physikalischer Wert | `uint8_percent`, `uint8_percent_pos_neg` |
+| `bytes` | Mehrbyte-Strukturen mit feldweiser Definition | `status_ok_ng`, `attenuator_enum`, `operating_mode` |
+| `bcd_packed` | BCD-kodierte Frequenzen mit Nibble-Zuordnung | `bcd3_freq`, `bcd5_freq`, `bcd6_freq` |
+
+---
+
+## 4. Praxisanleitungen
+
+### 4.1 Schritt fuer Schritt: Neuen Befehl einfuegen
+
+1. **Befehl in der CI-V-Referenz identifizieren**: `cmd`, optional `subcmd`, Richtung (lesen/senden) und Antwortformat festlegen.
+2. **Befehlsnamen waehlen**: `snake_case` verwenden, z.B. `read_s_meter` oder `send_rf_gain`.
+3. **Befehl in `protocols/manufacturers/icom/<model>.yaml` unter `protocol.commands` anlegen**: Grundfelder `cmd`, optional `subcmd`, `description`, `request`, `response` setzen.
+4. **Datentyp festlegen**: Bestehenden Typ aus `protocols/manufacturers/icom.yaml` referenzieren oder den Typ direkt im Befehl beschreiben.
+5. **Plausibilitaet pruefen**: Felder, Typnamen und Rueckgabeform zum Geraeteverhalten abgleichen.
+
+**Wichtiger Hinweis:** Ein Datentyp in der Hersteller-Datei ist nicht zwingend erforderlich. Einfache oder einmalige Strukturen koennen direkt im Befehl beschrieben werden.
+
+**Variante A: Datentyp aus `icom.yaml` referenzieren**
 
 ```yaml
 commands:
   read_s_meter:
     cmd: 0x15
     subcmd: 0x02
-    description: "S-Meter-Pegel lesen (0x00=S0, 0x78=S9, 0xF1=S9+60 dB)"
-    request:
-      structure: []                    # Keine Parameter erforderlich
+    description: "Read S-meter"
+    request: []
     response:
-      structure:
-        - name: "s_meter_level"
-          type: "uint8_s_meter"
-          offset: 0
-          length: 1
-          description: "S-Meter-Wert"
+      - name: "s_meter_level"
+        type: "uint8"
+        description: "S-meter raw value"
 ```
 
-#### Schritt 4: Verwendung in der Anwendung
-
-```python
-# Pseudocode: Verwendung im Programm
-response = radio.send_command('read_s_meter')
-s_meter_value = response['s_meter_level']  # z. B. 0x78
-s_db = decode_s_meter(s_meter_value)       # Lookup/Skalierung in dB
-```
-
----
-
-## 6. Best Practices & Konventionen
-
-### 6.1 Namenskonventionen
+**Variante B: Typ direkt im Befehl beschreiben**
 
 ```yaml
-# GUT: Klare, beschreibende Namen
-read_operating_frequency
-set_af_level
-read_s_meter
-
-# SCHLECHT: Vage oder abgekürzte Namen
-read_freq
-setafl
-rdsm
+commands:
+  read_s_meter:
+    cmd: 0x15
+    subcmd: 0x02
+    description: "Read S-meter"
+    request: []
+    response:
+      - name: "s_meter_level"
+        size: 1
+        encoding: "direct"
+        range:
+          min: 0
+          max: 255
+        description: "S-meter raw value"
 ```
 
-### 6.2 Dokumentation
+### 4.2 Schritt fuer Schritt: Weiteres Geraet hinzufuegen
 
-Immer angeben:
+1. **Neue Geraetedatei erstellen**: `protocols/manufacturers/icom/<neues_modell>.yaml` anlegen.
+2. **`protocol`-Metadaten eintragen**: `name`, `model`, `manufacturer`, `description` setzen.
+3. **`frame` definieren**: `preamble`, `terminator`, `default_controller`, `default_radio` fuer das neue Geraet eintragen.
+4. **Befehle uebernehmen und anpassen**: Bestehende Befehle als Startpunkt nutzen und nur gueltige Befehle fuer das neue Geraet belassen.
+5. **Datentypstrategie waehlen**: Gemeinsame Typen in `icom.yaml` wiederverwenden; modellspezifische Sonderfaelle entweder in `icom.yaml` erweitern oder direkt im jeweiligen Befehl beschreiben.
+6. **Konsistenz pruefen**: `model` und Dateiname, Befehlsnamen, `cmd`/`subcmd` und Typreferenzen auf Vollstaendigkeit und Korrektheit kontrollieren.
 
-```yaml
-command_name:
-  cmd: 0xXX
-  description: "Was macht dieser Befehl und wann wird er verwendet?"
-  # Weiterer Kontext:
-  data: "See p. 42"              # Verweis auf die Manual-Seite
-```
-
-### 6.3 Datentypgrößen
-
-Byte-Angaben präzise machen:
-
-```yaml
-# GUT: Explizites Offset-Tracking
-response:
-  structure:
-    - name: "frequency"
-      offset: 0
-      length: 5
-    - name: "mode"
-      offset: 5
-      length: 1
-
-# AKZEPTABEL: Parser berechnet Offset automatisch
-response:
-  structure:
-    - name: "frequency"
-      type: "bcd5_freq"
-    - name: "mode"
-      type: "operating_mode"
-```
-
----
-
-## 7. Erweiterung auf weitere Gerätemodelle
-
-### 7.1 Neues Gerät hinzufügen (z. B. IC-7300)
-
-1. **Neue Befehlsdatei erstellen**: `protocols/manufacturers/icom/ic7300.yaml`
-2. **Datentypen wiederverwenden**: `icom.yaml` referenzieren (dieselben Typen gelten)
-3. **Neue Befehle definieren**: Nur IC-7300-spezifische Befehle
+**Minimalbeispiel fuer eine neue Geraetedatei**
 
 ```yaml
 protocol:
   name: "Icom IC-7300"
   model: "ic7300"
   manufacturer: "Icom"
-  description: "KW-Transceiver"
-  
-  config:
-    # Gleiche Timeouts und Frame-Struktur wie beim IC-905
-    timeouts:
-      command_response: 1.0
-      session_idle: 300.0
-    
-    frame:
-      preamble: [0xFE, 0xFE]
-      terminator: 0xFD
-      default_controller: 0xE0
-      default_radio: 0x94      # IC-7300-Adresse (abweichend!)
-  
-  addresses:
-    controller: 0xE0
-    radio: 0x94
-  
+  description: "HF transceiver"
+
+  frame:
+    preamble: [0xFE, 0xFE]
+    terminator: 0xFD
+    default_controller: 0xE0
+    default_radio: 0x94
+
   commands:
-    # Der IC-7300 verfügt über ähnliche, aber nicht identische Befehle
     read_operating_frequency:
       cmd: 0x03
-      # ... gleiche Struktur wie beim IC-905
-```
-
-### 7.2 Neue Datentypen hinzufügen
-
-Falls ein neues Gerät eine abweichende Kodierung verwendet:
-
-```yaml
-# icom.yaml
-data_types:
-  # Existing types...
-
-  # Neu für IC-7300 S-Meter (2-Byte statt 1-Byte)
-  uint16_s_meter_ic7300:
-    name: "IC-7300 S-Meter Reading"
-    size: 2
-    description: "S-Meter 2-Byte-Kodierung 0x0000–0xFFFF"
-    encoding:
-      method: "lookup_scaled"
-      byte_order: "little_endian"
-    scaling:
-      type: "piecewise_linear"
-      unit: "dBµV"
-      reference_points:
-        - { raw: 0x0000, label: "S0", dbuv: 0  }
-        - { raw: 0x7800, label: "S9", dbuv: 74 }
+      subcmd: null
+      description: "Read operating frequency"
+      request: []
+      response:
+        - name: "frequency"
+          type: "bcd5_freq"
+          description: "Operating frequency"
 ```
 
 ---
 
-## 8. Diskussionspunkte & zukünftige Verbesserungen
-
-### 8.1 Validierungsschicht
-
-**Vorschlag**: JSON-Schema für YAML-Validierung hinzufügen
-
-```yaml
-# Schema-Validierung könnte prüfen:
-- Befehlsbyte-Bereiche (0x00–0xFF)
-- Eindeutigkeit der Unterbefehle pro Befehl
-- Konsistenz von Datentypexistenz und Größe
-- Symmetrie von Anfrage und Antwort
-
-Vorteile:
-- Tippfehler frühzeitig erkennen
-- Konsistenz über Gerätemodelle hinweg sicherstellen
-- IDE-Autovervollständigung ermöglichen
-```
-
-### 8.2 Typ-Hinweise für komplexe Strukturen
-
-**Vorschlag**: TypeScript-ähnliche Typannotationen hinzufügen
-
-```yaml
-commands:
-  set_frequency:
-    cmd: 0x05
-    request:
-      structure:
-        - name: frequency
-          type: bcd5_freq
-          required: true
-        - name vfo_select
-          type: uint8
-          enum: [0x00, 0x01]
-          description: "0x00=VFO-A, 0x01=VFO-B"
-          required: false
-```
-
-### 8.3 Automatische Generierung von API-Dokumentation
-
-**Vorschlag**: REST-API-Dokumentation aus YAML generieren
-
-```python
-# Werkzeug würde YAML lesen und generieren:
-POST /api/v1/radio/frequency
-  Anfrage: frequency (bcd5_freq)
-  Antwort: 0xFB (Erfolg) oder 0xFA (Fehler)
-  Beispiel: POST /api/v1/radio/frequency {"frequency": "144.500"}
-```
-
-### 8.4 Bidirektionale Anfrage/Antwort
-
-**Aktuell**: Manche Befehle sind „set“ (Daten senden) oder ‚get“ (Daten empfangen)
-
-**Vorschlag**: Befehle unterstützen, die gleichzeitig senden und empfangen
-
-```yaml
-query_frequency:
-  cmd: 0x03
-  mode: bidirectional
-  # Manche Geräte antworten mit der aktuellen Frequenz,
-  # während gleichzeitig eine neue gesetzt wird
-  request:
-    structure:
-      - name: frequency
-        type: bcd5_freq
-  response:
-    structure:
-      - name: previous_frequency
-        type: bcd5_freq
-```
-
-### 8.5 Fehlerantwort-Codes
-
-**Vorschlag**: Erwartete Fehlerantworten pro Befehl definieren
-
-```yaml
-set_frequency:
-  cmd: 0x05
-  errors:
-    - code: 0xFA
-      description: "Ungültige Frequenz für das aktuelle Band"
-    - code: 0xFB
-      description: "Erfolg"
-    - code: 0xFC
-      description: "Transceiver besetzt (anderer Befehl in Bearbeitung)"
-```
-
----
-
-## 9. Schnellreferenz: Befehlsvorlage
-
-Diese Vorlage beim Hinzufügen neuer Befehle verwenden:
-
-```yaml
-command_name:                          # Beschreibendes snake_case
-  cmd: 0xXX                            # Primärbyte des Befehls (hex)
-  subcmd: null                         # null, 0xXX oder [0xXX, 0xYY, ...]
-  description: "Klare Beschreibung"   # Was macht der Befehl?
-  
-  request:                             # Was wird an das Gerät gesendet
-    structure:
-      - name: "parametername"
-        type: "datentyp_name"
-        description: "Wofür steht dieser Parameter?"
-  
-  response:                            # Was schickt das Gerät zurück
-    structure:
-      - name: "antwort_feld"
-        type: "datentyp_name"
-        description: "Welche Bedeutung hat dieser Wert?"
-  
-  data: "See p. XX"                    # Optional: Verweis auf Handbuch
-```
-
----
-
-## 10. Referenzen
+## 5. Referenzen
 
 - **IC-905 CI-V-Referenz**: [Icom IC-905 CI-V Protocol Reference Manual](https://www.icomjapan.com/support/manual/3792/)
 - **YAML-Spezifikation**: https://yaml.org/spec/
@@ -649,14 +377,8 @@ command_name:                          # Beschreibendes snake_case
 
 ---
 
-## Dokumentenversion
+## 6. Dokumentenversion
 
-- **Version**: 0.1
-- **Datum**: 2026-03-02
+- **Version**: 0.1 (Entwurf)
+- **Datum**: 2026-03-10
 - **Autor**: DD0MM
-- **Status**: Entwurf — strukturiertes `bytes`/`scaling`-Schema eingeführt (v0.1)
-
-**Nächste Schritte**:
-1. Verbesserungsvorschläge besprechen und abstimmen
-2. Validierungsschema implementieren
-3. Werkzeuge zur automatischen Generierung von Dokumentation & APIs erstellen
