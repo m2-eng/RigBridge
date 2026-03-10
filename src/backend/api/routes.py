@@ -58,9 +58,11 @@ def _get_or_create_protocol_manager() -> ProtocolManager:
             manufacturer_file = config.device.get_manufacturer_path()
 
             # CIVProtocol-Instanz erstellen
+            logbook_manager = _cat_client_state.get('manager')
             protocol = CIVProtocol(
                 protocol_file=protocol_file,
-                manufacturer_file=manufacturer_file
+                manufacturer_file=manufacturer_file,
+                logbook=logbook_manager,
             )
             # Konfigurierte Adressen aus config.json haben Vorrang vor YAML-Defaults.
             protocol.set_addresses(
@@ -361,6 +363,7 @@ class WavelogConfigUpdate(BaseModel):
     api_url: Optional[str] = None
     api_key_or_secret_ref: Optional[str] = None
     polling_interval: Optional[int] = None
+    logbook_update_interval: Optional[int] = None
     radio_name: Optional[str] = None
     station_id: Optional[str] = None
     wavelog_gate_http_base: Optional[str] = None
@@ -681,8 +684,12 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
         logger.warning('CAT update task already running')
         return
 
-    raw_interval = update_interval or config.wavelog.polling_interval
-    interval = max(1, min(5, int(raw_interval)))
+    raw_polling_interval = update_interval if update_interval is not None else config.wavelog.polling_interval
+    # Polling ist Backup-Fallback und darf deshalb deutlich groesser sein.
+    polling_interval = max(10, min(300, int(raw_polling_interval)))
+    # Update-Intervall steuert, wie schnell geaenderte Daten ans Logbuch gehen.
+    raw_logbook_interval = config.wavelog.logbook_update_interval
+    logbook_update_interval = max(1, min(5, int(raw_logbook_interval)))
 
     client = await _get_or_create_cat_client()
     if not client:
@@ -695,18 +702,29 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
             connection_id='wavelog-default',
             connection_type='wavelog',
             enabled=True,
-            debounce_seconds=interval,
+            debounce_seconds=logbook_update_interval,
         ),
         WavelogLogbookClient(client),
     )
-    await manager.start_polling(_get_radio_status, interval_seconds=interval)
+    await manager.start_polling(_get_radio_status, interval_seconds=polling_interval)
 
     _cat_client_state['manager'] = manager
+
+    protocol_manager = _global_protocol_manager
+    if protocol_manager:
+        protocol = protocol_manager.get_protocol()
+        if isinstance(protocol, CIVProtocol):
+            protocol.logbook = manager
+
     _cat_client_state['running'] = True
     _cat_client_state['last_error'] = None
     _cat_client_state['connection_state'].update_status(CatConnectionStatus.CONNECTED)
     logger.info(
-        f'WaveLog CAT update task gestartet (Intervall: {interval}s, Debounce: 1-5s begrenzt)'
+        (
+            'WaveLog CAT update task gestartet '
+            f'(Polling-Intervall: {polling_interval}s, '
+            f'Logbook-Update-Intervall: {logbook_update_interval}s)'
+        )
     )
 
 
@@ -724,6 +742,12 @@ async def stop_cat_update_task():
             logger.error(f'Fehler beim Stoppen des Logbook-Managers: {e}')
         finally:
             _cat_client_state['manager'] = None
+
+    protocol_manager = _global_protocol_manager
+    if protocol_manager:
+        protocol = protocol_manager.get_protocol()
+        if isinstance(protocol, CIVProtocol):
+            protocol.logbook = None
 
     # Fallback: direkter Client wird weiterhin sauber geschlossen
     if _cat_client_state['client']:
