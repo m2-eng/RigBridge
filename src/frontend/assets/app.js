@@ -317,11 +317,10 @@ async function populateFormFields() {
 
     // API-Form
     if (config.api) {
-      const apiHost = document.getElementById('api-host');
-      if (apiHost) apiHost.value = config.api.host || '127.0.0.1';
-
       const apiPort = document.getElementById('api-port');
       if (apiPort) apiPort.value = config.api.port || 8080;
+
+      applyApiRuntimeMode(config);
 
       const apiLoglevel = document.getElementById('api-loglevel');
       if (apiLoglevel) apiLoglevel.value = config.api.log_level || 'INFO';
@@ -744,13 +743,18 @@ async function submitDeviceConfig() {
 
 async function submitAPIConfig() {
   try {
+    const config = configManager.getConfig();
+    const apiPortEditable = config?.runtime?.api_port_editable !== false;
+
     const data = {
-      host: document.getElementById('api-host').value,
-      port: parseInt(document.getElementById('api-port').value),
       log_level: document.getElementById('api-loglevel').value,
       health_check_enabled: document.getElementById('api-health-check-enabled').checked,
       enable_https: document.getElementById('api-https').checked,
     };
+
+    if (apiPortEditable) {
+      data.port = parseInt(document.getElementById('api-port').value);
+    }
 
     const errors = configManager.validate('api', data);
     if (errors.length > 0) {
@@ -773,6 +777,30 @@ async function submitAPIConfig() {
   } catch (error) {
     console.error('Failed to save API config:', error);
     showMessage('api-message', `Error: ${error.message}`, 'error');
+  }
+}
+
+function applyApiRuntimeMode(config) {
+  const apiPortInput = document.getElementById('api-port');
+  const apiPortHelp = document.getElementById('api-port-help');
+
+  if (!apiPortInput) {
+    return;
+  }
+
+  const runtime = config?.runtime || {};
+  const apiPortEditable = runtime.api_port_editable !== false;
+  const defaultPort = Number(runtime.api_port_default) || 8080;
+
+  apiPortInput.disabled = !apiPortEditable;
+  if (!apiPortEditable) {
+    apiPortInput.value = defaultPort;
+  }
+
+  if (apiPortHelp) {
+    apiPortHelp.textContent = apiPortEditable
+      ? 'Bei lokaler Ausfuehrung frei waehlbar. Im Container fix auf 8080.'
+      : `Container-Modus erkannt: Port ist fix auf ${defaultPort}.`;
   }
 }
 

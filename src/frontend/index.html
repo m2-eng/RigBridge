@@ -154,14 +154,9 @@
         <form id="api-form" class="config-form">
           <div class="form-row">
             <div class="form-group">
-              <label for="api-host">Host:</label>
-              <input type="text" id="api-host" name="host" value="127.0.0.1" required>
-              <small>Normalerweise 127.0.0.1 (lokal). Docker Container: 0.0.0.0</small>
-            </div>
-
-            <div class="form-group">
               <label for="api-port">Port:</label>
               <input type="number" id="api-port" name="port" min="1" max="65535" value="8080" required>
+              <small id="api-port-help">Bei lokaler Ausfuehrung frei waehlbar. Im Container fix auf 8080.</small>
             </div>
           </div>
 

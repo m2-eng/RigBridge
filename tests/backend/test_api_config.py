@@ -68,6 +68,21 @@ def test_get_config_masks_secret_ref(tmp_path: Path):
     assert payload['wavelog']['api_key_or_secret_ref'] == '***'
 
 
+def test_get_config_forces_fixed_api_host(tmp_path: Path):
+    config_path = tmp_path / 'config.json'
+    _write_config(config_path)
+
+    app = create_app(config_path=config_path)
+    client = TestClient(app)
+
+    response = client.get('/api/config')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['api']['host'] == '0.0.0.0'
+    assert payload['runtime']['api_host_fixed'] == '0.0.0.0'
+
+
 def test_put_config_persists_changes(tmp_path: Path):
     config_path = tmp_path / 'config.json'
     _write_config(config_path)
@@ -90,6 +105,41 @@ def test_put_config_persists_changes(tmp_path: Path):
     assert updated['api']['port'] == 8090
     assert updated['api']['log_level'] == 'DEBUG'
     assert updated['wavelog']['api_key_or_secret_ref'] == 'rigbridge/wavelog#new_api_key'
+    assert 'host' not in updated['api']
+
+
+def test_put_config_ignores_host_updates(tmp_path: Path):
+    config_path = tmp_path / 'config.json'
+    _write_config(config_path)
+
+    app = create_app(config_path=config_path)
+    client = TestClient(app)
+
+    response = client.put('/api/config', json={'api': {'host': '127.0.0.1'}})
+
+    assert response.status_code == 200
+    updated = json.loads(config_path.read_text(encoding='utf-8'))
+    assert 'host' not in updated['api']
+
+
+def test_put_config_container_mode_locks_api_port(tmp_path: Path, monkeypatch):
+    config_path = tmp_path / 'config.json'
+    _write_config(config_path)
+    monkeypatch.setenv('DOCKER_CONTAINER', '1')
+
+    app = create_app(config_path=config_path)
+    client = TestClient(app)
+
+    response = client.put('/api/config', json={'api': {'port': 8090}})
+
+    assert response.status_code == 200
+    updated = json.loads(config_path.read_text(encoding='utf-8'))
+    assert updated['api']['port'] == 8080
+
+    config_response = client.get('/api/config')
+    assert config_response.status_code == 200
+    payload = config_response.json()
+    assert payload['runtime']['api_port_editable'] is False
 
 
 def test_put_config_invalid_log_level_returns_error_contract(tmp_path: Path):

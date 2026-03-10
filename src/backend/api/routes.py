@@ -19,7 +19,13 @@ from dataclasses import asdict
 from enum import Enum
 
 from ..config.logger import RigBridgeLogger
-from ..config.settings import ConfigManager, LogLevel
+from ..config.settings import (
+    ConfigManager,
+    LogLevel,
+    API_HOST_FIXED,
+    API_PORT_DEFAULT,
+    is_running_in_container,
+)
 from ..config.secret_provider import create_secret_provider, SecretProviderError
 from ..protocol import ProtocolManager
 from ..protocol.civ_protocol import CIVProtocol
@@ -293,6 +299,7 @@ class ConfigResponse(BaseModel):
     wavelog: Dict[str, Any] = Field(description='Wavelog-Konfiguration')
     secret_provider: Dict[str, Any] = Field(description='Secret-Provider-Konfiguration')
     device: Dict[str, Any] = Field(description='Geräte-Konfiguration')
+    runtime: Dict[str, Any] = Field(description='Laufzeitinformationen für UI-Verhalten')
 
 
 class ConfigUpdateResponse(BaseModel):
@@ -892,6 +899,7 @@ def create_router() -> APIRouter:
     async def get_config() -> ConfigResponse:
         """Gibt die aktuelle Konfiguration zurück (Secrets maskiert)."""
         config = ConfigManager.get()
+        running_in_container = is_running_in_container()
 
         response: Dict[str, Any] = {
             'usb': asdict(config.usb),
@@ -902,7 +910,17 @@ def create_router() -> APIRouter:
             'wavelog': asdict(config.wavelog),
             'secret_provider': asdict(config.secret_provider),
             'device': asdict(config.device),
+            'runtime': {
+                'is_container': running_in_container,
+                'api_port_editable': not running_in_container,
+                'api_host_fixed': API_HOST_FIXED,
+                'api_port_default': API_PORT_DEFAULT,
+            },
         }
+
+        response['api']['host'] = API_HOST_FIXED
+        if running_in_container:
+            response['api']['port'] = API_PORT_DEFAULT
 
         if response['wavelog'].get('api_key_or_secret_ref'):
             response['wavelog']['api_key_or_secret_ref'] = '***'
@@ -919,6 +937,7 @@ def create_router() -> APIRouter:
         """Aktualisiert Konfiguration und speichert sie persistent in config.json."""
         config = ConfigManager.get()
         payload = request.model_dump(exclude_none=True)
+        running_in_container = is_running_in_container()
 
         if 'usb' in payload:
             for key, value in payload['usb'].items():
@@ -956,10 +975,18 @@ def create_router() -> APIRouter:
 
             for key, value in api_values.items():
                 if key != 'log_level':
+                    if key == 'host':
+                        continue
                     if key == 'health_check_enabled':
                         health_check_changed = (config.api.health_check_enabled != value)
                         new_health_check_enabled = value
+                    if key == 'port' and running_in_container:
+                        continue
                     setattr(config.api, key, value)
+
+            config.api.host = API_HOST_FIXED
+            if running_in_container:
+                config.api.port = API_PORT_DEFAULT
 
             if health_check_changed:
                 if new_health_check_enabled:
@@ -1010,6 +1037,11 @@ def create_router() -> APIRouter:
             # ProtocolManager muss nach Geräte-/Adressänderung neu aufgebaut werden.
             _global_protocol_manager = None
             logger.debug('ProtocolManager invalidiert (Device-Config aktualisiert)')
+
+        # Host ist global fixiert; im Container bleibt der Port unveränderlich auf Standard.
+        config.api.host = API_HOST_FIXED
+        if running_in_container:
+            config.api.port = API_PORT_DEFAULT
 
         ConfigManager.save()
 
