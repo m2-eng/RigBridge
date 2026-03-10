@@ -44,17 +44,27 @@ block
 
 ## Logbook Integration
 
+### Zweck
 
-### Architektur
+Die **Logbook-Integration** ist die zentrale Verwaltungsschicht für die Anbindung externer Logbuch-Systeme.
+Ihre Hauptaufgaben sind:
+- **Entkopplung der Logbuch-Protokolle**: Einheitliche Schnittstelle über `BaseLogbookClient` statt Anbieterlogik in API/Protocol.
+- **Zentrales Status-Caching**: Zwischenspeicherung von Frequenz, Modus und Leistung mit Zeitstempel und Sequenznummer.
+- **Debounced Versandsteuerung**: Verzögerter Versand nur bei stabilen Daten (konfigurierbar, aktuell auf 1-5 Sekunden begrenzt).
+- **Coalescing/Idempotenz**: Verhindert redundante Sends und verwirft veraltete geplante Updates.
+- **Erweiterbarkeit**: Mehrere Logbuch-Adapter (Wavelog, weitere Systeme) können parallel verwaltet werden.
+
+
+### Architektur ([`src/backend/logbook/`](../src/backend/logbook))
 
 ```mermaid
 block
   columns 2
 
   id_pm("Logbook Manager"):2
-  id_pm_civ("Wavelog")
+  id_pm_civ("Wavelog client")
   id_pm_others("... ")
-  id_tm_base("baseLogbook"):2
+  id_tm_base("base client"):2
 ```
 
 

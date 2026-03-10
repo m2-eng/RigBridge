@@ -110,6 +110,12 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | CAT-09 | ✅ | Fallback bei unvollständigem Radio-Status: Update wird übersprungen, kein ungültiger Payload. |
 | CAT-10 | 🔄 | Optionales Feld `power` wird nur bei verfügbarer Leistung gesendet; geräteabhängig noch nicht flächendeckend. |
 | CAT-11 | 🔄 | WaveLogGate HTTP (`.../{frequency}/{mode}`) und WebSocket-Client sind im CAT-Client vorhanden, aber End-to-End-Bridge-Fluss ist nicht vollständig produktiv verschaltet. |
+| CAT-12 | ✅ | LogbookManager als zentrale Orchestrierungsschicht ist eingeführt; Wavelog ist über einen Adapter (`BaseLogbookClient`-Konzept) angebunden. |
+| CAT-13 | ✅ | Debounce-Mechanismus ist umgesetzt: Versand an Logbücher erfolgt verzögert und nur bei stabilen Daten. |
+| CAT-14 | ✅ | Debounce-Zeit ist begrenzt auf Mindestwert 1 Sekunde und Maximalwert 5 Sekunden. |
+| CAT-15 | ✅ | Coalescing ist umgesetzt: identische Status-Updates werden nicht erneut versendet. |
+| CAT-16 | ✅ | Sequence-/Idempotenzschutz ist umgesetzt: nur der neueste Snapshot wird versendet, veraltete geplante Sends werden verworfen. |
+| CAT-17 | 🔄 | Multi-Target-Betrieb (mehrere parallele Logbuch-Verbindungen) ist architektonisch vorbereitet, produktive Mehrfach-Konfiguration folgt in einem nächsten Schritt. |
 
 ### 3.3 Interpreter Layer
 
