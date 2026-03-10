@@ -2,6 +2,7 @@
 
 RigBridge folgt einem **Clean Architecture** Ansatz mit mehrschichtiger Architektur und zentraler Ressourcen-Verwaltung:
 
+
 ## Gesamtarchitektur
 
 ```mermaid
@@ -9,7 +10,7 @@ block
   columns 2
 
   id_api("API"):1
-  id_wi("Wavelog Integration"):1
+  id_wi("Logbook Integration"):1
   
   id_pm_api<[" "]>(y):1
   id_pm_wl<[" "]>(y):1
@@ -26,6 +27,7 @@ block
 
 ```
 
+
 ## API Layer ([`routes.py`](../src/backend/api/routes.py))
 
 - **REST Endpoints**: `/api/rig/frequency`, `/api/rig/mode`, etc.
@@ -39,7 +41,22 @@ block
 
 **Dokumentation**: [API.md](API.md)
 
----
+
+## Logbook Integration
+
+
+### Architektur
+
+```mermaid
+block
+  columns 2
+
+  id_pm("Logbook Manager"):2
+  id_pm_civ("Wavelog")
+  id_pm_others("... ")
+  id_tm_base("baseLogbook"):2
+```
+
 
 ## Protocol Layer ([`src/backend/protocol/`](../src/backend/protocol/))
 
@@ -70,7 +87,6 @@ Seine Hauptaufgaben sind:
 - **Singleton-Pattern**: Systemweit nur eine Instanz
 
 
-
 ## Transport Manager ([`transport_manager.py`](../src/backend/transport/transport_manager.py))
 
 ### Zweck
@@ -98,7 +114,6 @@ block
 
 **Dokumentation**: [TRANSPORT_MANAGER.md](TRANSPORT_MANAGER.md)
 
----
 
 ## Datenfluss-Diagramme
 
@@ -147,22 +162,6 @@ sequenceDiagram
     Handler->>Handler: Forward to Wavelog API
 ```
 
----
-
----
-
-## Protocol Layer - CI-V Implementierung
-
-**Datei**: [`src/backend/protocol/civ_protocol.py`](../src/backend/protocol/civ_protocol.py)
-
-**Struktur**: Alles in einer Datei:
-- `ProtocolParser` - YAML-Parser für Protokolldefinitionen
-- `CIVCommandExecutor` - Frame-Building und Response-Parsing
-- `CIVProtocol` - BaseProtocol-Implementation (wraps Executor)
-
-**Design**: CIVProtocol delegiert an internen CIVCommandExecutor für Befehlsausführung und Parsing.
-
----
 
 ## Konfiguration
 
@@ -187,7 +186,6 @@ sequenceDiagram
 }
 ```
 
----
 
 ## Testing-Strategie
 
@@ -220,9 +218,8 @@ pytest tests/backend -m "unit"
 pytest tests/backend/test_protocol_manager.py -v
 ```
 
----
 
-## 🔗 Verwandte Dokumentation
+## Verwandte Dokumentation
 
 - [PROTOCOL_MANAGER.md](PROTOCOL_MANAGER.md) - Protocol Manager Details
 - [TRANSPORT_MANAGER.md](TRANSPORT_MANAGER.md) - Transport Manager Details
