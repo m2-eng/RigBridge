@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "RigBridge API Server",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/run_api.py",
       "console": "integratedTerminal",
@@ -15,8 +15,25 @@
       "cwd": "${workspaceFolder}"
     },
     {
+      "name": "RigBridge API Server (cProfile)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_api.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        "--profile",
+        "--profile-output",
+        "profile_debug.out"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "RigBridge Integration Test",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/test_integration.py",
       "console": "integratedTerminal",
@@ -25,7 +42,7 @@
     },
     {
       "name": "Python: Debug Tests",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "module": "pytest",
       "args": [
