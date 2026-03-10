@@ -1,3 +1,7 @@
+/* Utility: margin-bottom groß */
+.mb-lg {
+  margin-bottom: var(--spacing-lg) !important;
+}
 /**
  * Base Styles für RigBridge UI
  *
@@ -270,6 +274,104 @@ body {
   font-size: var(--font-size-xl);
   margin-bottom: var(--spacing-md);
   color: var(--text-primary);
+}
+
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: var(--spacing-xl) 0;
+}
+
+/* Two-column panel layout (e.g. Gerät & Verbindung tab) */
+.two-col-layout {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+
+.two-col-panel {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-lg);
+}
+
+.two-col-panel:first-child {
+  padding-left: 0;
+}
+
+.two-col-panel:last-child {
+  padding-right: 0;
+}
+
+.two-col-divider {
+  width: 1px;
+  background-color: var(--border-color);
+  align-self: stretch;
+  flex-shrink: 0;
+  margin: 0 var(--spacing-sm);
+}
+
+@media (max-width: 768px) {
+  .two-col-layout {
+    flex-direction: column;
+  }
+
+  .two-col-divider {
+    width: auto;
+    height: 1px;
+    margin: var(--spacing-lg) 0;
+  }
+
+  .two-col-panel {
+    padding: 0;
+  }
+}
+
+/* Command list - two column layout (25% name, 75% description) */
+.commands-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.command-item {
+  display: grid;
+  grid-template-columns: 25% 1fr;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--border-radius);
+  align-items: flex-start;
+}
+
+.command-name {
+  font-weight: 600;
+  color: var(--color-primary);
+  word-break: break-word;
+}
+
+.command-description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .command-item {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+
+  .command-name {
+    font-weight: 700;
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .command-description {
+    font-size: var(--font-size-small);
+  }
 }
 
 .tab-content h3 {

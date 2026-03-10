@@ -186,9 +186,15 @@ class ProtocolParser:
                 return command
         return None
 
-    def list_commands(self) -> List[str]:
-        """Gibt Liste aller verfügbaren Befehle zurück."""
-        return list(self.commands.keys())
+    def list_commands(self) -> List[Dict[str, str]]:
+        """Gibt Liste aller verfügbaren Befehle mit Beschreibungen zurück."""
+        return [
+            {
+                'name': name,
+                'description': command.description
+            }
+            for name, command in self.commands.items()
+        ]
 
     def _read_protocol_file(self) -> Optional[Dict[str, Any]]:
         """Liest die YAML-Protokolldatei und gibt den Inhalt zurück."""
@@ -794,12 +800,12 @@ class CIVProtocol(BaseProtocol):
                 error=str(e)
             )
 
-    def list_commands(self) -> List[str]:
+    def list_commands(self) -> List[Dict[str, str]]:
         """
-        Gibt Liste aller verfügbaren CI-V Befehle zurück.
+        Gibt Liste aller verfügbaren CI-V Befehle mit Beschreibungen zurück.
 
         Returns:
-            Liste der Befehlsnamen aus YAML
+            Liste der Befehle mit name und description Feldern
         """
         return self._parser.list_commands()
 

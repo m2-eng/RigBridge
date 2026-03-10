@@ -308,10 +308,16 @@ class ConfigUpdateResponse(BaseModel):
     message: str = Field(description='Bestätigungmeldung')
 
 
+class CommandInfo(BaseModel):
+    """Informationen zu einem verfügbaren Befehl."""
+    name: str = Field(description='Befehlsname')
+    description: str = Field(description='Kurzbeschreibung des Befehls')
+
+
 class CommandListResponse(BaseModel):
     """Response mit Liste verfügbarer Befehle."""
-    commands: List[str] = Field(
-        description='Liste der verfügbaren Befehlsnamen aus YAML'
+    commands: List[CommandInfo] = Field(
+        description='Liste der verfügbaren Befehle mit Namen und Beschreibungen'
     )
 
 
@@ -1288,7 +1294,9 @@ def create_router() -> APIRouter:
             protocol_manager = get_protocol_manager()
             commands = protocol_manager.list_commands()
             logger.debug(f'Listed {len(commands)} available commands')
-            return CommandListResponse(commands=sorted(commands))
+            # Sort by command name
+            sorted_commands = sorted(commands, key=lambda x: x['name'])
+            return CommandListResponse(commands=sorted_commands)
         except Exception as e:
             logger.error(f'Command list failed: {e}')
             raise HTTPException(status_code=500, detail=str(e))
