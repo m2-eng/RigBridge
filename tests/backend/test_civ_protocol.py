@@ -28,10 +28,12 @@ class TestCIVProtocol:
         protocol = CIVProtocol(protocol_file, manufacturer_file)
 
         commands = protocol.list_commands()
+        command_names = {command['name'] for command in commands}
 
         assert len(commands) > 0, "Sollte Commands haben"
-        assert 'read_operating_frequency' in commands, "Sollte read_operating_frequency haben"
-        assert 'read_operating_mode' in commands, "Sollte read_operating_mode haben"
+        assert 'read_operating_frequency' in command_names, "Sollte read_operating_frequency haben"
+        assert 'read_operating_mode' in command_names, "Sollte read_operating_mode haben"
+        assert all('description' in command for command in commands), "Jeder Command sollte eine Beschreibung enthalten"
 
     def test_is_valid_radio_id_with_valid_frame(self, protocol_file, manufacturer_file):
         """Test: Radio-ID-Validierung mit gültigem Frame."""

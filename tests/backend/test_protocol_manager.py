@@ -48,10 +48,12 @@ class TestProtocolManager:
         pm.set_protocol(protocol)
 
         commands = pm.list_commands()
+        command_names = {command['name'] for command in commands}
 
         assert len(commands) > 0, "Sollte Commands haben"
-        assert 'read_operating_frequency' in commands, "Sollte read_operating_frequency haben"
-        assert 'read_operating_mode' in commands, "Sollte read_operating_mode haben"
+        assert 'read_operating_frequency' in command_names, "Sollte read_operating_frequency haben"
+        assert 'read_operating_mode' in command_names, "Sollte read_operating_mode haben"
+        assert all('description' in command for command in commands), "Jeder Command sollte eine Beschreibung enthalten"
 
     @pytest.mark.asyncio
     async def test_execute_command_without_protocol(self):
