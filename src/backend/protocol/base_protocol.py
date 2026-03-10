@@ -78,12 +78,12 @@ class BaseProtocol(ABC):
         pass
 
     @abstractmethod
-    def list_commands(self) -> List[str]:
+    def list_commands(self) -> List[Dict[str, str]]:
         """
-        Gibt Liste aller verfügbaren Befehle zurück.
+        Gibt Liste aller verfügbaren Befehle mit Beschreibungen zurück.
 
         Returns:
-            Liste der Befehlsnamen aus YAML
+            Liste der Befehle mit name und description Feldern
         """
         pass
 

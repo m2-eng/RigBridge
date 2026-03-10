@@ -135,12 +135,12 @@ class ProtocolManager:
                 error=error_msg
             )
 
-    def list_commands(self) -> List[str]:
+    def list_commands(self) -> List[Dict[str, str]]:
         """
-        Gibt Liste aller verfügbaren Befehle zurück.
+        Gibt Liste aller verfügbaren Befehle mit Beschreibungen zurück.
 
         Returns:
-            Liste der Befehlsnamen aus YAML-Protokoll
+            Liste der Befehle mit name und description Feldern
         """
         if not self._protocol:
             logger.warning('No protocol set - returning empty command list')

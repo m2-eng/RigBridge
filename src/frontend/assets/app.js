@@ -36,9 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Status-Polling entsprechend Konfiguration starten/stoppen
   syncStatusPollingWithConfig();
 
-  // Config in Info-Tab anzeigen
-  displayConfigJson();
-
   // Event-Listener für Formulare
   setupFormHandlers();
 
@@ -47,6 +44,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Commands-Tab Handler
   setupCommandsHandlers();
+
+  // Commands im kombinierten "Gerät & Verbindung"-Tab direkt laden
+  await loadCommandsList();
 
   console.info('RigBridge UI initialized');
 });
@@ -102,10 +102,6 @@ function setupTabNavigation() {
           await loadLicenseContent();
         }
         
-        // Commands-Tab: Befehle laden
-        if (tabName === 'commands') {
-          await loadCommandsList();
-        }
       } else {
         console.warn(`Tab content not found: ${tabId}`);
       }
@@ -216,19 +212,31 @@ function displayCommands(commands) {
     commandsCount.textContent = `${commands.length} Befehl${commands.length !== 1 ? 'e' : ''} gefunden`;
   }
   
-  // Erstelle Liste
-  const list = document.createElement('ul');
-  list.className = 'command-list';
+  // Erstelle Container für zwei-spaltige Befehle
+  const commandsList = document.createElement('div');
+  commandsList.className = 'commands-list';
   
   commands.forEach(command => {
-    const item = document.createElement('li');
+    const item = document.createElement('div');
     item.className = 'command-item';
-    item.textContent = command;
-    list.appendChild(item);
+    
+    // Command name (left column, 25%)
+    const nameCol = document.createElement('span');
+    nameCol.className = 'command-name';
+    nameCol.textContent = command.name;
+    
+    // Command description (right column, 75%)
+    const descCol = document.createElement('span');
+    descCol.className = 'command-description';
+    descCol.textContent = command.description;
+    
+    item.appendChild(nameCol);
+    item.appendChild(descCol);
+    commandsList.appendChild(item);
   });
   
   commandsContainer.innerHTML = '';
-  commandsContainer.appendChild(list);
+  commandsContainer.appendChild(commandsList);
 }
 
 function filterCommands() {
@@ -241,7 +249,8 @@ function filterCommands() {
     displayCommands(allCommands);
   } else {
     const filtered = allCommands.filter(cmd => 
-      cmd.toLowerCase().includes(searchTerm)
+      cmd.name.toLowerCase().includes(searchTerm) ||
+      cmd.description.toLowerCase().includes(searchTerm)
     );
     displayCommands(filtered);
   }
@@ -392,55 +401,9 @@ async function populateFormFields() {
 }
 
 // ============================================================================
-// CONFIG JSON DISPLAY
-// ============================================================================
-
-function displayConfigJson() {
-  try {
-    const config = configManager.getConfig();
-
-    // Tiefe Kopie des Config-Objekts erstellen
-    const displayConfig = JSON.parse(JSON.stringify(config));
-
-    // Alle Secret-Felder maskieren (Felder mit Namen *_secret_ref oder *_key, die mit _ oder _ aus mehreren Teilen bestehen)
-    const maskSecrets = (obj) => {
-      if (typeof obj !== 'object' || obj === null) {
-        return;
-      }
-
-      for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
-          // Maskiere alle Felder, die auf *_secret_ref oder *_key enden
-          if (key.includes('secret') || key.includes('key') || key.includes('password')) {
-            obj[key] = '***';
-          } else if (typeof obj[key] === 'object') {
-            // Rekursiv in verschachtelten Objekten nach Secrets suchen
-            maskSecrets(obj[key]);
-          }
-        }
-      }
-    };
-
-    maskSecrets(displayConfig);
-
-    // JSON formatieren und anzeigen
-    const jsonString = JSON.stringify(displayConfig, null, 2);
-    const codeElement = document.querySelector('#config-json code');
-    if (codeElement) {
-      codeElement.textContent = jsonString;
-    }
-  } catch (error) {
-    console.error('Failed to display config JSON:', error);
-    const codeElement = document.querySelector('#config-json code');
-    if (codeElement) {
-      codeElement.textContent = `Error loading config: ${error.message}`;
-    }
-  }
-}
-
-// ============================================================================
 // FORM HANDLERS
 // ============================================================================
+
 
 function setupFormHandlers() {
   // USB-Form
