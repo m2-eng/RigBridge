@@ -44,7 +44,6 @@
       <button class="nav-tab" data-tab="api">API-Server</button>
       <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
       <button class="nav-tab" data-tab="commands">Befehle</button>
-      <button class="nav-tab" data-tab="logs">Logs</button>
       <button class="nav-tab" data-tab="info">Informationen</button>
       <button class="nav-tab" data-tab="license">Lizenz</button>
     </nav>
@@ -154,25 +153,20 @@
         <form id="api-form" class="config-form">
           <div class="form-row">
             <div class="form-group">
-              <label for="api-host">Host:</label>
-              <input type="text" id="api-host" name="host" value="127.0.0.1" required>
-              <small>Normalerweise 127.0.0.1 (lokal). Docker Container: 0.0.0.0</small>
+              <label for="api-port">Port:</label>
+              <input type="number" id="api-port" name="port" min="1" max="65535" value="8080" required>
+              <small id="api-port-help">Bei lokaler Ausfuehrung frei waehlbar. Im Container fix auf 8080.</small>
             </div>
 
             <div class="form-group">
-              <label for="api-port">Port:</label>
-              <input type="number" id="api-port" name="port" min="1" max="65535" value="8080" required>
+              <label for="api-loglevel">Log-Level:</label>
+              <select id="api-loglevel" name="log_level" required>
+                <option value="DEBUG">DEBUG (sehr detailliert)</option>
+                <option value="INFO" selected>INFO (Standard)</option>
+                <option value="WARNING">WARNING (Warnungen + Fehler)</option>
+                <option value="ERROR">ERROR (nur Fehler)</option>
+              </select>
             </div>
-          </div>
-
-          <div class="form-group">
-            <label for="api-loglevel">Log-Level:</label>
-            <select id="api-loglevel" name="log_level" required>
-              <option value="DEBUG">DEBUG (sehr detailliert)</option>
-              <option value="INFO" selected>INFO (Standard)</option>
-              <option value="WARNING">WARNING (Warnungen + Fehler)</option>
-              <option value="ERROR">ERROR (nur Fehler)</option>
-            </select>
           </div>
 
           <div class="form-group form-checkbox">
@@ -192,6 +186,36 @@
           <button type="submit" class="btn-primary">Speichern</button>
           <span id="api-message" class="form-message"></span>
         </form>
+
+        <h3>System-Logs</h3>
+        <div class="logs-controls">
+          <div class="logs-controls-group">
+            <button type="button" id="logs-refresh-btn" class="btn-secondary">🔄 Aktualisieren</button>
+            <button type="button" id="logs-clear-btn" class="btn-secondary">🗑️ Puffer leeren</button>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-auto-refresh">Auto-Refresh:
+              <input type="checkbox" id="logs-auto-refresh">
+            </label>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-limit">Limit:
+              <input type="number" id="logs-limit" value="100" min="10" max="1000">
+            </label>
+          </div>
+          <div class="logs-controls-group">
+            <label for="logs-filter-level">Filter:
+              <select id="logs-filter-level">
+                <option value="">Alle Level</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="logs-container" class="logs-list"></div>
       </div>
 
       <!-- Wavelog Integration Tab -->
@@ -260,39 +284,6 @@
         <div id="commands-container" class="commands-list">
           <p class="loading-message">Befehle werden geladen...</p>
         </div>
-      </div>
-
-      <!-- Logs Tab -->
-      <div id="logs-tab" class="tab-content">
-        <h2>System-Logs</h2>
-        <div class="logs-controls">
-          <div class="logs-controls-group">
-            <button type="button" id="logs-refresh-btn" class="btn-secondary">🔄 Aktualisieren</button>
-            <button type="button" id="logs-clear-btn" class="btn-secondary">🗑️ Puffer leeren</button>
-          </div>
-          <div class="logs-controls-group">
-            <label for="logs-auto-refresh">Auto-Refresh:
-              <input type="checkbox" id="logs-auto-refresh">
-            </label>
-          </div>
-          <div class="logs-controls-group">
-            <label for="logs-limit">Limit:
-              <input type="number" id="logs-limit" value="100" min="10" max="1000">
-            </label>
-          </div>
-          <div class="logs-controls-group">
-            <label for="logs-filter-level">Filter:
-              <select id="logs-filter-level">
-                <option value="">Alle Level</option>
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING">WARNING</option>
-                <option value="ERROR">ERROR</option>
-              </select>
-            </label>
-          </div>
-        </div>
-        <div id="logs-container" class="logs-list"></div>
       </div>
 
       <!-- License Tab -->

@@ -10,6 +10,22 @@ from typing import Optional, Any, Dict
 from pathlib import Path
 from enum import Enum
 import json
+import os
+
+
+API_HOST_FIXED = '0.0.0.0'
+API_PORT_DEFAULT = 8080
+
+
+def is_running_in_container() -> bool:
+    """Erkennt, ob RigBridge aktuell in einem Container läuft."""
+    if os.environ.get('RIGBRIDGE_RUNTIME', '').strip().lower() == 'container':
+        return True
+
+    if os.environ.get('DOCKER_CONTAINER', '').strip() == '1':
+        return True
+
+    return Path('/.dockerenv').exists()
 
 
 class LogLevel(str, Enum):
@@ -35,8 +51,8 @@ class USBConfig:
 @dataclass
 class APIConfig:
     """REST-API-Konfiguration."""
-    host: str = '127.0.0.1'
-    port: int = 8080
+    host: str = API_HOST_FIXED
+    port: int = API_PORT_DEFAULT
     health_check_enabled: bool = True
     enable_https: bool = False
     cert_file: Optional[str] = None
@@ -114,7 +130,14 @@ class RigBridgeConfig:
 
         config_dict = {
             'usb': asdict(self.usb),
-            'api': {**asdict(self.api), 'log_level': self.api.log_level.value},
+            'api': {
+                'port': self.api.port,
+                'health_check_enabled': self.api.health_check_enabled,
+                'enable_https': self.api.enable_https,
+                'cert_file': self.api.cert_file,
+                'key_file': self.api.key_file,
+                'log_level': self.api.log_level.value,
+            },
             'wavelog': asdict(self.wavelog),
             'secret_provider': asdict(self.secret_provider),
             'device': device_dict,
@@ -136,7 +159,8 @@ class RigBridgeConfig:
         if 'usb' in data:
             config.usb = USBConfig(**data['usb'])
         if 'api' in data:
-            api_data = data['api']
+            api_data = data['api'].copy()
+            api_data.pop('host', None)  # Legacy-Feld aus älteren config.json ignorieren.
             if 'log_level' in api_data and isinstance(api_data['log_level'], str):
                 api_data['log_level'] = LogLevel(api_data['log_level'])
             config.api = APIConfig(**api_data)
@@ -182,6 +206,13 @@ class ConfigManager:
         config_path = config_file or default_path
 
         manager._config = RigBridgeConfig.load(config_path)
+
+        # API-Host kommt aus einer zentralen Quelle und ist nicht nutzerkonfigurierbar.
+        manager._config.api.host = API_HOST_FIXED
+
+        # Im Container bleibt der API-Port aus Sicherheits- und Mapping-Gründen fix.
+        if is_running_in_container():
+            manager._config.api.port = API_PORT_DEFAULT
 
         return manager._config
 
