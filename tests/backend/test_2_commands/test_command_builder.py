@@ -72,8 +72,8 @@ class TestCommandBuilder:
         frame, error = executor.build_request('read_operating_mode')
 
         assert error is None
-        # TX: [FE FE] [RadioAddr 0xA4] [ControllerAddr 0xE0] [CMD] ...
-        assert frame[2] == 0xA4, "TX: Position 2 sollte RadioAddr (0xA4) sein"
+        # TX: [FE FE] [RadioAddr 0xAC] [ControllerAddr 0xE0] [CMD] ...
+        assert frame[2] == 0xAC, "TX: Position 2 sollte RadioAddr (0xAC) sein"
         assert frame[3] == 0xE0, "TX: Position 3 sollte ControllerAddr (0xE0) sein"
 
     def test_frame_struct_preamble(self, protocol_file, manufacturer_file):

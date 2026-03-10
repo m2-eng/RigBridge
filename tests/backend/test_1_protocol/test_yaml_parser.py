@@ -60,11 +60,11 @@ class TestProtocolParser:
         assert hasattr(parser, 'controller_addr'), "Controller-Adresse nicht geladen"
         assert hasattr(parser, 'radio_addr'), "Radio-Adresse nicht geladen"
 
-        # Standardwerte für Icom CI-V
+        # Standardwerte für Icom CI-V (IC-905)
         assert parser.preamble == bytearray([0xFE, 0xFE]), "Preamble sollte [FE FE] sein"
         assert parser.terminator == 0xFD, "Terminator sollte [FD] sein"
         assert parser.controller_addr == 0xE0, "Controller-Addr sollte 0xE0 sein"
-        assert parser.radio_addr == 0xA4, "Radio-Addr sollte 0xA4 sein"
+        assert parser.radio_addr == 0xAC, "Radio-Addr sollte 0xAC sein"
 
     def test_get_nonexistent_command(self, protocol_file, manufacturer_file):
         """Test: Nicht existierender Befehl gibt None zurück."""
