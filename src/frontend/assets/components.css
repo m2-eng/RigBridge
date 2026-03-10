@@ -503,6 +503,100 @@ input[type="radio"] {
 }
 
 /* ============================================================================
+   COMMANDS TAB
+   ============================================================================ */
+
+.commands-controls {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: flex-end;
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.commands-controls .form-group {
+  flex: 1;
+  min-width: 250px;
+  margin-bottom: 0;
+}
+
+.commands-controls button {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 22px;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  transition: border-color var(--transition-time) var(--transition-easing);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.commands-list {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.command-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.command-item {
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--border-radius);
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  transition: all var(--transition-time) var(--transition-easing);
+}
+
+.command-item:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--color-primary);
+  transform: translateX(4px);
+}
+
+.command-item:last-child {
+  margin-bottom: 0;
+}
+
+.commands-list .loading-message,
+.commands-list .error,
+.commands-list .info-message {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.commands-list .error {
+  color: var(--color-danger);
+  background-color: rgba(220, 53, 69, 0.1);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--border-radius);
+}
+
+/* ============================================================================
    RESPONSIVE
    ============================================================================ */
 
@@ -543,5 +637,23 @@ input[type="radio"] {
   #logs-container {
     max-height: 500px;
     height: 500px;
+  }
+
+  .commands-controls {
+    flex-direction: column;
+  }
+
+  .commands-controls .form-group {
+    width: 100%;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .commands-controls button {
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .commands-list {
+    max-height: 400px;
   }
 }

@@ -37,6 +37,7 @@ class APIConfig:
     """REST-API-Konfiguration."""
     host: str = '127.0.0.1'
     port: int = 8080
+    health_check_enabled: bool = True
     enable_https: bool = False
     cert_file: Optional[str] = None
     key_file: Optional[str] = None
@@ -71,6 +72,8 @@ class DeviceConfig:
     name: str = 'Icom IC-905'
     manufacturer: str = 'icom'  # Hersteller: 'icom', 'yaesu', 'kenwood', etc.
     protocol_file: str = 'ic905'  # YAML-Dateiname ohne Pfad und Endung
+    controller_address: int = 0xE0  # Controller-Adresse (CI-V)
+    radio_address: int = 0xA4  # Funkgerät-Adresse (CI-V)
 
     def get_manufacturer_path(self) -> Path:
         """Konstruiert den vollständigen Pfad zur Herstellerdatei."""
@@ -104,12 +107,17 @@ class RigBridgeConfig:
         file_path = Path(file_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Device-Config mit Hex-Adressen
+        device_dict = asdict(self.device)
+        device_dict['controller_address'] = f"0x{self.device.controller_address:02X}"
+        device_dict['radio_address'] = f"0x{self.device.radio_address:02X}"
+
         config_dict = {
             'usb': asdict(self.usb),
             'api': {**asdict(self.api), 'log_level': self.api.log_level.value},
             'wavelog': asdict(self.wavelog),
             'secret_provider': asdict(self.secret_provider),
-            'device': asdict(self.device),
+            'device': device_dict,
         }
 
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -137,7 +145,15 @@ class RigBridgeConfig:
         if 'secret_provider' in data:
             config.secret_provider = SecretProviderConfig(**data['secret_provider'])
         if 'device' in data:
-            config.device = DeviceConfig(**data['device'])
+            device_data = data['device'].copy()
+            # Konvertiere Hex-Strings zu int
+            if 'controller_address' in device_data:
+                addr = device_data['controller_address']
+                device_data['controller_address'] = int(addr, 16) if isinstance(addr, str) else addr
+            if 'radio_address' in device_data:
+                addr = device_data['radio_address']
+                device_data['radio_address'] = int(addr, 16) if isinstance(addr, str) else addr
+            config.device = DeviceConfig(**device_data)
 
         return config
 

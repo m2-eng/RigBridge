@@ -1,6 +1,6 @@
 {
   "usb": {
-    "port": "COM4",
+    "port": "/dev/ttyACM0",
     "baud_rate": 115200,
     "data_bits": 8,
     "stop_bits": 1,
@@ -9,8 +9,9 @@
     "reconnect_interval": 5
   },
   "api": {
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "port": 8080,
+    "health_check_enabled": true,
     "enable_https": false,
     "cert_file": null,
     "key_file": null,
@@ -35,6 +36,8 @@
   "device": {
     "name": "ICOM IC905",
     "manufacturer": "icom",
-    "protocol_file": "ic905"
+    "protocol_file": "ic905",
+    "controller_address": "0xE0",
+    "radio_address": "0xA4"
   }
 }

@@ -8,6 +8,7 @@ mit CI-V Protokoll-Support.
 import serial
 import time
 import asyncio
+import threading
 from typing import Optional, Set
 
 from ..config.logger import RigBridgeLogger
@@ -39,6 +40,9 @@ class USBConnection(BaseTransport):
         self.config = config
         self.simulate = simulate
         self.serial_port: Optional[serial.Serial] = None
+
+        # Thread-sicherer Zugriff auf Serial Port (wichtig für Linux!)
+        self._serial_lock = threading.Lock()
 
         # Background Reader Verwaltung
         self._background_reader_running = False
@@ -75,6 +79,18 @@ class USBConnection(BaseTransport):
             True wenn erfolgreich, False bei Fehler
         """
         try:
+            # Merke ob Reader vorher lief (für Neustart nach Reconnect)
+            reader_was_running = self._background_reader_running
+
+            # Stoppe alten Reader falls vorhanden (wird nach reconnect neu gestartet)
+            if reader_was_running:
+                self._background_reader_running = False
+                if hasattr(self, '_background_reader_task') and self._background_reader_task:
+                    try:
+                        self._background_reader_task.cancel()
+                    except Exception:
+                        pass
+
             # Schließe alte Verbindung falls noch offen
             if self.serial_port and self.serial_port.is_open:
                 try:
@@ -99,6 +115,7 @@ class USBConnection(BaseTransport):
             self.last_error = None
 
             # Starte Background-Reader automatisch bei erfolgreicher Verbindung
+            # (auch bei Reconnects, wenn er vorher lief)
             self._start_background_reader()
 
             return True
@@ -161,8 +178,10 @@ class USBConnection(BaseTransport):
                 self.state.update_status(TransportStatus.CONNECTED, "Simulation")
                 return True
 
-            # Sende über echte Verbindung
-            bytes_sent = self.serial_port.write(frame.raw_bytes)
+            # Thread-safe write mit Lock (wichtig für Linux!)
+            with self._serial_lock:
+                # Sende über echte Verbindung
+                bytes_sent = self.serial_port.write(frame.raw_bytes)
 
             if bytes_sent == len(frame.raw_bytes):
                 logger.debug(f"[TX] Frame gesendet ({bytes_sent} bytes): {hex_str}")
@@ -193,7 +212,8 @@ class USBConnection(BaseTransport):
             if self.reconnect_if_needed():
                 logger.info("Reconnect erfolgreich, wiederhole Frame-Versand...")
                 try:
-                    bytes_sent = self.serial_port.write(frame.raw_bytes)
+                    with self._serial_lock:
+                        bytes_sent = self.serial_port.write(frame.raw_bytes)
                     if bytes_sent == len(frame.raw_bytes):
                         logger.info(f"[TX] Frame nach Reconnect gesendet ({bytes_sent} bytes)")
                         return True
@@ -204,7 +224,7 @@ class USBConnection(BaseTransport):
 
     def read_response(self, timeout: Optional[float] = None) -> Optional[FrameData]:
         """
-        Liest Response vom Funkgerät.
+        Liest Response vom Funkgerät (thread-safe).
 
         Erwartet CI-V Format: 0xFE 0xFE ... 0xFD
 
@@ -223,54 +243,73 @@ class USBConnection(BaseTransport):
                 # Simulation: keine Daten
                 return None
 
-            # Setze temporären Timeout
-            old_timeout = self.serial_port.timeout
-            if timeout:
-                self.serial_port.timeout = timeout
+            # Thread-safe read mit Lock (wichtig für Linux!)
+            with self._serial_lock:
+                # Setze temporären Timeout
+                old_timeout = self.serial_port.timeout
+                if timeout is not None:
+                    self.serial_port.timeout = timeout
 
-            # Lese CI-V Frame (0xFE...0xFD)
-            frame_data = bytearray()
-            in_frame = False
-
-            while True:
-                byte = self.serial_port.read(1)
-
-                if not byte:
-                    # Timeout
-                    if frame_data:
-                        hex_str = " ".join(f"{b:02X}" for b in frame_data)
-                        logger.debug(f"[RX] Unvollständiges Frame auf Timeout: {hex_str}")
-                    break
-
-                byte_val = byte[0]
-
-                if byte_val == 0xFE and not in_frame:
-                    # Frame-Start
-                    frame_data.append(byte_val)
-                    in_frame = True
-                elif in_frame:
-                    frame_data.append(byte_val)
-
-                    if byte_val == 0xFD:
-                        # Frame-Ende gefunden
-                        hex_str = " ".join(f"{b:02X}" for b in frame_data)
-                        logger.debug(f"[RX] Frame empfangen ({len(frame_data)} bytes): {hex_str}")
-
-                        # Timeout zurücksetzen
+                # Lese CI-V Frame (0xFE...0xFD)
+                frame_data = bytearray()
+                in_frame = False
+                
+                # Plattformspezifische Optimierung: bei längerem Timeout
+                # auf Linux, warte auf mind. 1 Byte vor dem Frame-Parsing
+                if timeout and timeout > 0.1:
+                    first_byte = self.serial_port.read(1)
+                    if not first_byte:
+                        # Timeout ohne Daten - kein Frame verfügbar
                         if timeout:
                             self.serial_port.timeout = old_timeout
+                        return None
+                        
+                    # Erstes Byte gefunden - prüfe ob Frame-Start
+                    if first_byte[0] == 0xFE:
+                        frame_data.append(first_byte[0])
+                        in_frame = True
+                        # Reduziere Timeout für restliche Bytes (Frame sollte schnell kommen)
+                        self.serial_port.timeout = 0.1
 
-                        return FrameData(bytes(frame_data))
+                while True:
+                    byte = self.serial_port.read(1)
 
-            # Timeout ohne 0xFD
-            if timeout:
-                self.serial_port.timeout = old_timeout
+                    if not byte:
+                        # Timeout
+                        if frame_data:
+                            hex_str = " ".join(f"{b:02X}" for b in frame_data)
+                            logger.debug(f"[RX] Unvollständiges Frame auf Timeout: {hex_str}")
+                        break
 
-            if frame_data:
-                hex_str = " ".join(f"{b:02X}" for b in frame_data)
-                logger.warning(f"[RX] Unvollständiges Frame: {hex_str}")
+                    byte_val = byte[0]
 
-            return None
+                    if byte_val == 0xFE and not in_frame:
+                        # Frame-Start
+                        frame_data.append(byte_val)
+                        in_frame = True
+                    elif in_frame:
+                        frame_data.append(byte_val)
+
+                        if byte_val == 0xFD:
+                            # Frame-Ende gefunden
+                            hex_str = " ".join(f"{b:02X}" for b in frame_data)
+                            logger.debug(f"[RX] Frame empfangen ({len(frame_data)} bytes): {hex_str}")
+
+                            # Timeout zurücksetzen
+                            if timeout:
+                                self.serial_port.timeout = old_timeout
+
+                            return FrameData(bytes(frame_data))
+
+                # Timeout ohne 0xFD
+                if timeout:
+                    self.serial_port.timeout = old_timeout
+
+                if frame_data:
+                    hex_str = " ".join(f"{b:02X}" for b in frame_data)
+                    logger.warning(f"[RX] Unvollständiges Frame: {hex_str}")
+
+                return None
 
         except serial.SerialException as e:
             self.last_error = str(e)
@@ -365,17 +404,26 @@ class USBConnection(BaseTransport):
 
         WICHTIG: Dies ist der ereignisbasierte Trigger!
         Kein zeitgesteuertes Polling mehr - wir warten auf echte Daten.
+
+        PLATTFORM-KOMPATIBILITÄT:
+        - Verwendet run_in_executor statt asyncio.to_thread (Python 3.7+ kompatibel)
+        - Längerer Timeout für bessere Linux/ARM-Performance
+        - Robustes Error-Handling für Plattformunterschiede
         """
         logger.info("USB Continuous Reader gestartet (ereignisbasiert)")
 
         try:
+            loop = asyncio.get_event_loop()
+
             while self._background_reader_running and self.state.is_connected():
                 try:
-                    # Lese Daten vom USB-Port (nicht-blocking via asyncio)
-                    # Kurzer Timeout, damit wir graceful shutdown prüfen können
-                    frame = await asyncio.to_thread(
-                        self.read_response,
-                        timeout=0.2
+                    # Lese Daten vom USB-Port (nicht-blocking via executor)
+                    # Längerer Timeout für bessere Performance auf Linux/ARM
+                    # run_in_executor ist kompatibler als to_thread (auch Python 3.7+)
+                    frame = await loop.run_in_executor(
+                        None,  # Default ThreadPoolExecutor
+                        self._read_response_with_timeout,
+                        0.5  # 0.5s Timeout - besser für Linux/Jetson
                     )
 
                     if frame:
@@ -390,9 +438,9 @@ class USBConnection(BaseTransport):
                         # - Unsolicited Frame → in Event-Queue für Handler-Callbacks
                         # Aktuell: Alle Frames werden als unsolicited behandelt
                         self._push_unsolicited_frame(frame)
-
-                    # Ganz kurze Pause, um Event Loop nicht zu blockieren
-                    await asyncio.sleep(0.01)
+                    else:
+                        # Kein Frame empfangen - kurze Pause
+                        await asyncio.sleep(0.05)
 
                 except asyncio.CancelledError:
                     logger.info("USB Continuous Reader wurde abgebrochen")
@@ -404,6 +452,26 @@ class USBConnection(BaseTransport):
         finally:
             logger.info("USB Continuous Reader beendet")
             self._background_reader_running = False
+
+    def _read_response_with_timeout(self, timeout: float) -> Optional[FrameData]:
+        """
+        Wrapper für read_response mit Timeout-Parameter.
+
+        Diese Methode wird im ThreadPoolExecutor ausgeführt und ist
+        blocking-safe für verschiedene Plattformen.
+
+        Args:
+            timeout: Timeout in Sekunden
+
+        Returns:
+            FrameData oder None
+        """
+        try:
+            # read_response ist bereits thread-safe (Lock intern)
+            return self.read_response(timeout=timeout)
+        except Exception as e:
+            logger.debug(f"Read timeout/error (normal bei keinen Daten): {e}")
+            return None
 
     def __repr__(self) -> str:
         """String-Repräsentation."""

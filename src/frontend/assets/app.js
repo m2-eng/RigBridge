@@ -14,9 +14,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Theme initialisieren
   themeSwitcher.init();
 
-  // Status-Widget starten
-  statusWidget.start();
-
   // Config laden
   try {
     await configManager.loadConfig();
@@ -36,6 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // UI mit Config-Werten füllen
   await populateFormFields();
 
+  // Status-Polling entsprechend Konfiguration starten/stoppen
+  syncStatusPollingWithConfig();
+
   // Config in Info-Tab anzeigen
   displayConfigJson();
 
@@ -45,8 +45,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Tab-Navigation
   setupTabNavigation();
 
+  // Commands-Tab Handler
+  setupCommandsHandlers();
+
   console.info('RigBridge UI initialized');
 });
+
+function syncStatusPollingWithConfig() {
+  try {
+    const config = configManager.getConfig();
+    const pollingEnabled = config?.api?.health_check_enabled !== false;
+
+    if (pollingEnabled) {
+      statusWidget.start();
+    } else {
+      statusWidget.stop();
+    }
+  } catch (error) {
+    console.warn('Could not sync status polling state, using default on:', error);
+    statusWidget.start();
+  }
+}
 
 // ============================================================================
 // TAB NAVIGATION
@@ -81,6 +100,11 @@ function setupTabNavigation() {
         // License-Tab: Datei laden
         if (tabName === 'license') {
           await loadLicenseContent();
+        }
+        
+        // Commands-Tab: Befehle laden
+        if (tabName === 'commands') {
+          await loadCommandsList();
         }
       } else {
         console.warn(`Tab content not found: ${tabId}`);
@@ -132,13 +156,115 @@ async function loadLicenseContent() {
 }
 
 // ============================================================================
-// HELPER FUNCTIONS
+// COMMANDS LOADING
 // ============================================================================
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+let allCommands = []; // Globaler Cache für alle geladenen Befehle
+
+async function loadCommandsList() {
+  try {
+    const commandsContainer = document.getElementById('commands-container');
+    if (!commandsContainer) {
+      console.warn('Commands container not found');
+      return;
+    }
+
+    // Prüfe ob wir bereits geladen haben
+    if (commandsContainer.dataset.loaded === 'true' && allCommands.length > 0) {
+      console.info('Commands already loaded, displaying from cache');
+      displayCommands(allCommands);
+      return;
+    }
+
+    commandsContainer.innerHTML = '<p class="loading-message">Befehle werden geladen...</p>';
+
+    const response = await fetch('/api/commands');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    allCommands = data.commands || [];
+    
+    displayCommands(allCommands);
+    commandsContainer.dataset.loaded = 'true';
+
+    console.info(`Commands loaded successfully: ${allCommands.length} commands`);
+  } catch (error) {
+    console.error('Failed to load commands:', error);
+    const commandsContainer = document.getElementById('commands-container');
+    if (commandsContainer) {
+      commandsContainer.innerHTML = `<p class="error">Befehle konnten nicht geladen werden: ${escapeHtml(error.message)}</p>`;
+    }
+  }
+}
+
+function displayCommands(commands) {
+  const commandsContainer = document.getElementById('commands-container');
+  const commandsCount = document.getElementById('commands-count');
+  
+  if (!commandsContainer) return;
+  
+  if (commands.length === 0) {
+    commandsContainer.innerHTML = '<p class="info-message">Keine Befehle gefunden.</p>';
+    if (commandsCount) commandsCount.textContent = '0 Befehle gefunden';
+    return;
+  }
+  
+  // Aktualisiere Anzahl
+  if (commandsCount) {
+    commandsCount.textContent = `${commands.length} Befehl${commands.length !== 1 ? 'e' : ''} gefunden`;
+  }
+  
+  // Erstelle Liste
+  const list = document.createElement('ul');
+  list.className = 'command-list';
+  
+  commands.forEach(command => {
+    const item = document.createElement('li');
+    item.className = 'command-item';
+    item.textContent = command;
+    list.appendChild(item);
+  });
+  
+  commandsContainer.innerHTML = '';
+  commandsContainer.appendChild(list);
+}
+
+function filterCommands() {
+  const searchInput = document.getElementById('commands-search');
+  if (!searchInput) return;
+  
+  const searchTerm = searchInput.value.toLowerCase().trim();
+  
+  if (searchTerm === '') {
+    displayCommands(allCommands);
+  } else {
+    const filtered = allCommands.filter(cmd => 
+      cmd.toLowerCase().includes(searchTerm)
+    );
+    displayCommands(filtered);
+  }
+}
+
+function setupCommandsHandlers() {
+  const searchInput = document.getElementById('commands-search');
+  const refreshBtn = document.getElementById('commands-refresh-btn');
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', filterCommands);
+  }
+  
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      const commandsContainer = document.getElementById('commands-container');
+      if (commandsContainer) {
+        commandsContainer.dataset.loaded = 'false';
+      }
+      allCommands = [];
+      await loadCommandsList();
+    });
+  }
 }
 
 // ============================================================================
@@ -178,7 +304,15 @@ async function populateFormFields() {
 
     // Device-Form
     if (config.device) {
-      // wird später mit der geladenen Gerätelist gefüllt
+      const controllerAddr = document.getElementById('device-controller-address');
+      if (controllerAddr) {
+        controllerAddr.value = formatAddressHex(config.device.controller_address, 224);
+      }
+      
+      const radioAddr = document.getElementById('device-radio-address');
+      if (radioAddr) {
+        radioAddr.value = formatAddressHex(config.device.radio_address, 164);
+      }
     }
 
     // API-Form
@@ -191,6 +325,11 @@ async function populateFormFields() {
 
       const apiLoglevel = document.getElementById('api-loglevel');
       if (apiLoglevel) apiLoglevel.value = config.api.log_level || 'INFO';
+
+      const apiHealthCheckEnabled = document.getElementById('api-health-check-enabled');
+      if (apiHealthCheckEnabled) {
+        apiHealthCheckEnabled.checked = config.api.health_check_enabled !== false;
+      }
 
       const apiHttps = document.getElementById('api-https');
       if (apiHttps) apiHttps.checked = config.api.enable_https || false;
@@ -217,20 +356,25 @@ async function populateFormFields() {
 
     // Info-Tab
     try {
-      const status = await api.getStatus();
       const apiVersion = document.getElementById('api-version');
-      if (apiVersion) apiVersion.textContent = status.api_version || '-';
-
       const infoDevice = document.getElementById('info-device');
-      if (infoDevice) infoDevice.textContent = config.device?.name || '-';
-
       const infoPort = document.getElementById('info-port');
+      const infoStatus = document.getElementById('info-status');
+
+      if (infoDevice) infoDevice.textContent = config.device?.name || '-';
       if (infoPort) infoPort.textContent = config.usb?.port || '-';
 
-      const infoStatus = document.getElementById('info-status');
-      if (infoStatus) infoStatus.textContent = status.usb_connected ? 'Connected' : 'Disconnected';
+      const pollingEnabled = config.api?.health_check_enabled !== false;
+      if (!pollingEnabled) {
+        if (apiVersion) apiVersion.textContent = '-';
+        if (infoStatus) infoStatus.textContent = 'Status-Polling deaktiviert';
+      } else {
+        const status = await api.getStatus();
+        if (apiVersion) apiVersion.textContent = status.api_version || '-';
+        if (infoStatus) infoStatus.textContent = status.usb_connected ? 'Connected' : 'Disconnected';
+      }
 
-      console.info('Info tab populated with status');
+      console.info('Info tab populated with status/config');
     } catch (statusError) {
       console.warn('Could not fetch status, but forms still populated:', statusError);
     }
@@ -312,6 +456,14 @@ function setupFormHandlers() {
   // Device-Form
   const deviceForm = document.getElementById('device-form');
   if (deviceForm) {
+    const deviceSelect = document.getElementById('device-select');
+    if (deviceSelect) {
+      deviceSelect.addEventListener('change', () => {
+        // Beim Gerätewechsel immer YAML-Defaults als Standard übernehmen.
+        applyDeviceDefaultsFromSelection(true);
+      });
+    }
+
     deviceForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       await submitDeviceConfig();
@@ -465,6 +617,8 @@ async function loadDevices() {
         name: device.name,
         manufacturer: device.manufacturer,
         protocol_file: device.protocol_file,
+        default_controller: device.default_controller,
+        default_radio: device.default_radio,
       });
       option.textContent = device.name;
       select.appendChild(option);
@@ -473,23 +627,73 @@ async function loadDevices() {
     // Markiere aktuelles Gerät
     const config = configManager.getConfig();
     if (config.device) {
-      const currentValue = JSON.stringify({
-        name: config.device.name,
-        manufacturer: config.device.manufacturer,
-        protocol_file: config.device.protocol_file,
-      });
-
       for (const option of select.options) {
-        if (option.value === currentValue) {
+        if (!option.value) {
+          continue;
+        }
+
+        const optionData = JSON.parse(option.value);
+        if (
+          optionData.name === config.device.name
+          && optionData.manufacturer === config.device.manufacturer
+          && optionData.protocol_file === config.device.protocol_file
+        ) {
           option.selected = true;
           break;
         }
       }
     }
 
+    // Falls noch keine Adresse gesetzt ist, nutze YAML-Defaults des gewählten Geräts.
+    applyDeviceDefaultsFromSelection(false);
+
     console.info('Devices loaded successfully');
   } catch (error) {
     console.error('Failed to load devices:', error);
+  }
+}
+
+function formatAddressHex(value, fallback) {
+  const numeric = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return `0x${numeric.toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+function parseAddressInput(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    throw new Error('Address value is required');
+  }
+
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 255) {
+    throw new Error(`Invalid address '${text}'. Use 0x00-0xFF or 0-255.`);
+  }
+
+  return parsed;
+}
+
+function applyDeviceDefaultsFromSelection(force = false) {
+  const select = document.getElementById('device-select');
+  if (!select || !select.value) {
+    return;
+  }
+
+  try {
+    const selectedDevice = JSON.parse(select.value);
+    const controllerAddr = document.getElementById('device-controller-address');
+    const radioAddr = document.getElementById('device-radio-address');
+
+    const defaultController = selectedDevice.default_controller ?? 224;
+    const defaultRadio = selectedDevice.default_radio ?? 164;
+
+    if (controllerAddr && (force || !controllerAddr.value)) {
+      controllerAddr.value = formatAddressHex(defaultController, 224);
+    }
+    if (radioAddr && (force || !radioAddr.value)) {
+      radioAddr.value = formatAddressHex(defaultRadio, 164);
+    }
+  } catch (error) {
+    console.warn('Could not apply device defaults from selection:', error);
   }
 }
 
@@ -501,7 +705,24 @@ async function submitDeviceConfig() {
       return;
     }
 
-    const deviceData = JSON.parse(select.value);
+    const selectedDevice = JSON.parse(select.value);
+    const deviceData = {
+      name: selectedDevice.name,
+      manufacturer: selectedDevice.manufacturer,
+      protocol_file: selectedDevice.protocol_file,
+    };
+    
+    // Adressen aus den Eingabefeldern hinzufügen
+    const controllerAddr = document.getElementById('device-controller-address');
+    const radioAddr = document.getElementById('device-radio-address');
+    
+    if (controllerAddr) {
+      deviceData.controller_address = parseAddressInput(controllerAddr.value);
+    }
+    if (radioAddr) {
+      deviceData.radio_address = parseAddressInput(radioAddr.value);
+    }
+    
     await configManager.saveSection('device', deviceData);
 
     // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren
@@ -527,6 +748,7 @@ async function submitAPIConfig() {
       host: document.getElementById('api-host').value,
       port: parseInt(document.getElementById('api-port').value),
       log_level: document.getElementById('api-loglevel').value,
+      health_check_enabled: document.getElementById('api-health-check-enabled').checked,
       enable_https: document.getElementById('api-https').checked,
     };
 
@@ -543,6 +765,9 @@ async function submitAPIConfig() {
 
     // Aktualisiere die Formulare mit den neuesten Werten
     await populateFormFields();
+
+    // Polling sofort entsprechend neuem Wert anpassen
+    syncStatusPollingWithConfig();
 
     showMessage('api-message', 'API configuration saved successfully!', 'success');
   } catch (error) {

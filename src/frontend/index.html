@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RigBridge - Funkgerät-API mit Wavelog-Anbindung</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="stylesheet" href="/assets/base-styles.css">
   <link rel="stylesheet" href="/assets/components.css">
   <link rel="stylesheet" href="/assets/theme.css">
@@ -42,6 +43,7 @@
       <button class="nav-tab" data-tab="device">Gerätewahl</button>
       <button class="nav-tab" data-tab="api">API-Server</button>
       <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
+      <button class="nav-tab" data-tab="commands">Befehle</button>
       <button class="nav-tab" data-tab="logs">Logs</button>
       <button class="nav-tab" data-tab="info">Informationen</button>
       <button class="nav-tab" data-tab="license">Lizenz</button>
@@ -124,6 +126,21 @@
             </select>
           </div>
 
+          <div class="form-row">
+            <div class="form-group">
+              <label for="device-controller-address">Controller-Adresse (CI-V):</label>
+              <input type="text" id="device-controller-address" name="controller_address"
+                placeholder="0xE0" required>
+              <small>Standardwert aus der gewählten Geräte-YAML (frame.default_controller)</small>
+            </div>
+            <div class="form-group">
+              <label for="device-radio-address">Funkgerät-Adresse (CI-V):</label>
+              <input type="text" id="device-radio-address" name="radio_address"
+                placeholder="0xA4" required>
+              <small>Standardwert aus der gewählten Geräte-YAML (frame.default_radio)</small>
+            </div>
+          </div>
+
           <div id="device-info" class="info-box"></div>
 
           <button type="submit" class="btn-primary">Speichern</button>
@@ -156,6 +173,13 @@
               <option value="WARNING">WARNING (Warnungen + Fehler)</option>
               <option value="ERROR">ERROR (nur Fehler)</option>
             </select>
+          </div>
+
+          <div class="form-group form-checkbox">
+            <label>
+              <input type="checkbox" id="api-health-check-enabled" name="health_check_enabled" checked>
+              Status-Abfrage (/api/status) aktivieren
+            </label>
           </div>
 
           <div class="form-group form-checkbox">
@@ -217,6 +241,25 @@
           <button type="submit" class="btn-primary">Speichern</button>
           <span id="wavelog-message" class="form-message"></span>
         </form>
+      </div>
+
+      <!-- Commands Tab -->
+      <div id="commands-tab" class="tab-content">
+        <h2>Verfügbare Befehle</h2>
+        <p>Alle vom aktuell gewählten Gerät unterstützten Befehle aus der YAML-Protokolldefinition.</p>
+        
+        <div class="commands-controls">
+          <div class="form-group">
+            <label for="commands-search">Suche:</label>
+            <input type="text" id="commands-search" placeholder="Befehl suchen..." class="search-input">
+            <small id="commands-count">0 Befehle gefunden</small>
+          </div>
+          <button type="button" id="commands-refresh-btn" class="btn-secondary">🔄 Aktualisieren</button>
+        </div>
+        
+        <div id="commands-container" class="commands-list">
+          <p class="loading-message">Befehle werden geladen...</p>
+        </div>
       </div>
 
       <!-- Logs Tab -->

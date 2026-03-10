@@ -42,6 +42,61 @@ docker-compose up rigbridge
 
 Danach: http://127.0.0.1:8080
 
+## 📦 Container Release & Offline Deployment
+
+Container werden gezielt nur bei einem veroeffentlichten GitHub Release gebaut und bereitgestellt.
+
+- Workflow: `.github/workflows/docker-release.yml`
+- Trigger: `release.published`
+- Registry: `ghcr.io/m2-eng/rigbridge`
+- Tags: `<release-tag>` und `latest`
+
+Beispiel nach Release `v1.2.3`:
+
+```bash
+docker pull ghcr.io/m2-eng/rigbridge:v1.2.3
+```
+
+### Lokaler Test vor dem Release (inkl. Offline-Paket)
+
+Image lokal bauen und als TAR exportieren:
+
+```powershell
+./docker/build-local-image.ps1 -ImageName rigbridge -Tag local-test
+```
+
+Fuer Jetson (ARM64) stattdessen mit Plattform-Flag bauen:
+
+```powershell
+./docker/build-local-image.ps1 -ImageName rigbridge -Tag local-test -Platform linux/arm64
+```
+
+Wichtig:
+
+- Das TAR-Paket ist ein Docker-Image-Archiv fuer `docker load`.
+- Nicht mit `docker import` einlesen, da dabei Image-Metadaten (CMD/Entrypoint) verloren gehen.
+
+Standard-Ausgabe:
+
+- `docker/offline/rigbridge-local-test.tar`
+
+Image auf einem Zielsystem ohne Internet laden und starten:
+
+```powershell
+./docker/run-offline-image.ps1 -TarPath ./docker/offline/rigbridge-local-test.tar -ImageName rigbridge -Tag local-test
+```
+
+Jetson/Linux-Variante (Bash):
+
+```bash
+./docker/run-offline-image-jetson.sh ./docker/offline/rigbridge-local-test.tar
+```
+
+Hinweis:
+
+- Das Start-Skript erwartet `config.json` und `theme.css` im aktuellen Verzeichnis.
+- Fuer vollstaendig offline Deployment nur die TAR-Datei plus `config.json` und `theme.css` auf das Zielsystem kopieren.
+
 ## 📋 Browser-UI Features
 
 Die Browser-UI bietet:

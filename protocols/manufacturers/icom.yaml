@@ -5,21 +5,29 @@
 
 data_types:
   status_ok_ng:
-      name: "Transaction Status OK/NG"
+      name: "transaction_status"
       size: 1
       description: "Returns either success or error response (mutually exclusive)"
       encoding: "bytes"
       bytes:
-        - index: 0
-          length: 1
-          name: "status"
+        - name: "status"
           encoding: "enum"
+          index: 0
+          length: 1
           values:
             0xFB: "OK"
             0xFA: "ERROR"
 
+  # Basic data types
+  boolean:
+    size: 1
+    description: "Single byte boolean value for all ON/OFF, Open/Close, sharp/soft, ... settings"
+    encoding: "enum"
+    values:
+      false: 0x00
+      true: 0x01
+
   uint8:
-    name: "Unsigned 8-bit Integer"
     size: 1
     description: "Single byte 0x00-0xFF"
     encoding: "direct"
@@ -27,39 +35,99 @@ data_types:
       min: 0
       max: 255
 
-  # IMPORTANT, TODO: Syntax change; Use this as draft for other datatypes
-  operating_mode:
-    name: "Operating Mode"
+  # percent values (0-100%)
+  uint8_percent:
     size: 2
-    description: "Betriebsart und Filterauswahl jeweils als 1-Byte-Enum-Wert"
-    encoding: "bytes"
+    description: "Prozentwert 0–100%, als 0x0000–0xFFFF linear kodiert (0x0000=0%, 0xFFFF=100%)"
+    encoding: "linear_scaled"
+    scaling:
+      raw:      [0, 255]
+      physical: [0.0, 100.0]
+    range:
+      raw_min: 0
+      raw_max: 255
+      physical_min: 0.0
+      physical_max: 100.0
+      physical_unit: "%"
+
+  uint8_percent_pos_neg:
+    size: 2
+    description: "Bipolarer Prozentwert −100%–+100%, als 0x00–0xFF kodiert (0x00≈−100%, 0x80=0%, 0xFF=+100%)"
+    encoding: "linear_scaled"
+    scaling:
+      raw:      [0, 128, 255]
+      physical: [-100.0, 0.0, 100.0]
+    range:
+      raw_min: 0
+      raw_max: 255
+      physical_min: -100.0
+      physical_max: 100.0
+      physical_unit: "%"
+
+  # frequency data types
+  bcd3_freq:
+    name: "frequency"
+    size: 3
+    description: "3-Byte BCD-kodierte Frequenz (6 Dezimalstellen), Auflösung 100 Hz, Bereich 0–99.9999 MHz"
+    encoding: "bcd_packed"
     bytes:
       - index: 0
-        length: 1
-        name: "mode"
-        encoding: "enum"
-        values:
-          0x00: "LSB"
-          0x01: "USB"
-          0x02: "AM"
-          0x03: "CWR"
-          0x04: "RTTY"
-          0x05: "FM"
-          0x07: "CW-R"
-          0x08: "RTTY-R"
-          0x17: "DV"
-          0x22: "DD"
-          0x23: "ATV"
-        description: "Betriebsart (LSB, USB, AM, FM, …)"
+        high_nibble: { place: "1kHz",   weight: 1000 }
+        low_nibble:  { place: "100Hz",  weight: 100  }
       - index: 1
-        length: 1
-        name: "filter"
-        encoding: "enum"
-        values:
-          0x01: "FIL1"
-          0x02: "FIL2"
-          0x03: "FIL3"
-        description: "Filterauswahl (FIL1, FIL2, FIL3)"
+        high_nibble: { place: "100kHz", weight: 100000 }
+        low_nibble:  { place: "10kHz",  weight: 10000  }
+      - index: 2
+        high_nibble: { place: "10MHz",  weight: 10000000 }
+        low_nibble:  { place: "1MHz",   weight: 1000000  }
+
+  bcd5_freq:
+    name: "frequency"
+    size: 5
+    description: "5-Byte BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz, Bereich 0–9.999999999 GHz"
+    encoding: "bcd_packed"
+    bytes:
+      - index: 0
+        high_nibble: { place: "10Hz",   weight: 10 }
+        low_nibble:  { place: "1Hz",    weight: 1  }
+      - index: 1
+        high_nibble: { place: "1kHz",   weight: 1000 }
+        low_nibble:  { place: "100Hz",  weight: 100  }
+      - index: 2
+        high_nibble: { place: "100kHz", weight: 100000 }
+        low_nibble:  { place: "10kHz",  weight: 10000  }
+      - index: 3
+        high_nibble: { place: "10MHz",  weight: 10000000 }
+        low_nibble:  { place: "1MHz",   weight: 1000000  }
+      - index: 4
+        high_nibble: { place: "1GHz",   weight: 1000000000 }
+        low_nibble:  { place: "100MHz", weight: 100000000  }
+
+  bcd6_freq:
+    name: "frequency"
+    size: 6
+    description: "6-Byte BCD-kodierte Frequenz (12 Dezimalstellen), Auflösung 1 Hz, Bereich 0–99.999999999 GHz (10-GHz-Band)"
+    encoding: "bcd_packed"
+    bytes:
+      - index: 0
+        high_nibble: { place: "10Hz",   weight: 10 }
+        low_nibble:  { place: "1Hz",    weight: 1  }
+      - index: 1
+        high_nibble: { place: "1kHz",   weight: 1000 }
+        low_nibble:  { place: "100Hz",  weight: 100  }
+      - index: 2
+        high_nibble: { place: "100kHz", weight: 100000 }
+        low_nibble:  { place: "10kHz",  weight: 10000  }
+      - index: 3
+        high_nibble: { place: "10MHz",  weight: 10000000 }
+        low_nibble:  { place: "1MHz",   weight: 1000000  }
+      - index: 4
+        high_nibble: { place: "1GHz",   weight: 1000000000 }
+        low_nibble:  { place: "100MHz", weight: 100000000  }
+      - index: 5
+        high_nibble: { place: "100GHz", weight: 100000000000 }
+        low_nibble:  { place: "10GHz",  weight: 10000000000  }
+    note: "Für das 10-GHz-Band (IC-905). Byte 5 wird nur bei ≥10 GHz genutzt."
 
   # band_edge_bcd5: &band_edge_bcd5
   #   type: "structure"
@@ -105,79 +173,56 @@ data_types:
   #       offset: 8
   #       length: 6
 
-  # bcd3_freq:
-  #   name: "3-Byte BCD Frequency"
-  #   size: 3
-  #   description: "BCD-kodierte Frequenz (6 Dezimalstellen), Auflösung 100 Hz, Bereich 0–99.9999 MHz"
-  #   resolution_hz: 100
-  #   bytes:
-  #     - index: 0
-  #       high_nibble: { place: "1kHz",   weight: 1000 }
-  #       low_nibble:  { place: "100Hz",  weight: 100  }
-  #     - index: 1
-  #       high_nibble: { place: "100kHz", weight: 100000 }
-  #       low_nibble:  { place: "10kHz",  weight: 10000  }
-  #     - index: 2
-  #       high_nibble: { place: "10MHz",  weight: 10000000 }
-  #       low_nibble:  { place: "1MHz",   weight: 1000000  }
-  #   encoding:
-  #     method: "bcd_packed"
-  #     byte_order: "little_endian"
-  #     example: "44.5000 MHz → 00 50 44"
-
-  bcd5_freq:
-    name: "5-Byte BCD Frequency"
-    size: 5
-    description: "BCD-kodierte Frequenz (10 Dezimalstellen), Auflösung 1 Hz, Bereich 0–9.999999999 GHz"
+  # other data types
+  attenuator_enum:
+    name: "Attenuator Setting"
+    size: 1
+    description: "Attenuator setting encoded as 1-Byte Enum values for OFF and 10dB"
+    encoding: "bytes"
     bytes:
       - index: 0
-        high_nibble: { place: "10Hz",   weight: 10 }
-        low_nibble:  { place: "1Hz",    weight: 1  }
-      - index: 1
-        high_nibble: { place: "1kHz",   weight: 1000 }
-        low_nibble:  { place: "100Hz",  weight: 100  }
-      - index: 2
-        high_nibble: { place: "100kHz", weight: 100000 }
-        low_nibble:  { place: "10kHz",  weight: 10000  }
-      - index: 3
-        high_nibble: { place: "10MHz",  weight: 10000000 }
-        low_nibble:  { place: "1MHz",   weight: 1000000  }
-      - index: 4
-        high_nibble: { place: "1GHz",   weight: 1000000000 }
-        low_nibble:  { place: "100MHz", weight: 100000000  }
-    encoding:
-      method: "bcd_packed"
-      byte_order: "little_endian"
-      example: "144.500 MHz → 00 00 50 44 01"
+        length: 1
+        name: "attenuator_setting"
+        encoding: "enum"
+        values:
+          0x00: "attenuator OFF"
+          0x10: "10dB attenuator setting"
 
-  bcd6_freq:
-    name: "6-Byte BCD Frequency"
-    size: 6
-    description: "BCD-kodierte Frequenz (12 Dezimalstellen), Auflösung 1 Hz, Bereich 0–99.999999999 GHz (10-GHz-Band)"
+  # IMPORTANT, TODO: Syntax change; Use this as draft for other datatypes
+  operating_mode:
+    name: "Operating Mode"
+    size: 2
+    description: "Betriebsart und Filterauswahl jeweils als 1-Byte-Enum-Wert"
+    encoding: "bytes"
     bytes:
       - index: 0
-        high_nibble: { place: "10Hz",   weight: 10 }
-        low_nibble:  { place: "1Hz",    weight: 1  }
+        length: 1
+        name: "mode"
+        encoding: "enum"
+        values:
+          0x00: "LSB"
+          0x01: "USB"
+          0x02: "AM"
+          0x03: "CWR"
+          0x04: "RTTY"
+          0x05: "FM"
+          0x07: "CW-R"
+          0x08: "RTTY-R"
+          0x17: "DV"
+          0x22: "DD"
+          0x23: "ATV"
+        description: "Betriebsart (LSB, USB, AM, FM, …)"
       - index: 1
-        high_nibble: { place: "1kHz",   weight: 1000 }
-        low_nibble:  { place: "100Hz",  weight: 100  }
-      - index: 2
-        high_nibble: { place: "100kHz", weight: 100000 }
-        low_nibble:  { place: "10kHz",  weight: 10000  }
-      - index: 3
-        high_nibble: { place: "10MHz",  weight: 10000000 }
-        low_nibble:  { place: "1MHz",   weight: 1000000  }
-      - index: 4
-        high_nibble: { place: "1GHz",   weight: 1000000000 }
-        low_nibble:  { place: "100MHz", weight: 100000000  }
-      - index: 5
-        high_nibble: { place: "100GHz", weight: 100000000000 }
-        low_nibble:  { place: "10GHz",  weight: 10000000000  }
-    encoding:
-      method: "bcd_packed"
-      byte_order: "little_endian"
-      example: "10.000 GHz → 00 00 00 00 00 01"
-    note: "Für das 10-GHz-Band (IC-905). Byte 5 wird nur bei ≥10 GHz genutzt."
+        length: 1
+        name: "filter"
+        encoding: "enum"
+        values:
+          0x01: "FIL1"
+          0x02: "FIL2"
+          0x03: "FIL3"
+        description: "Filterauswahl (FIL1, FIL2, FIL3)"
+
+# not yet reviewed data types (commented out for now, to be reviewed and added later)
 
   # uint8_0_99:
   #   name: "Unsigned 8-bit Integer (0-99)"
@@ -205,44 +250,6 @@ data_types:
   #     raw_max: 255
   #     physical_min: 0.0
   #     physical_max: 10.0
-
-  # uint8_percent:
-  #   name: "Percentage 0–100%"
-  #   size: 1
-  #   description: "Prozentwert 0–100%, als 0x00–0xFF linear kodiert (0x00=0%, 0xFF=100%)"
-  #   encoding:
-  #     method: "linear_scaled"
-  #   scaling:
-  #     type: "linear"
-  #     unit: "%"
-  #     raw:      { min: 0,   max: 255   }
-  #     physical: { min: 0.0, max: 100.0 }
-  #   range:
-  #     raw_min: 0
-  #     raw_max: 255
-  #     physical_min: 0.0
-  #     physical_max: 100.0
-  #     physical_unit: "%"
-
-  # uint8_percent_pos_neg:
-  #   name: "Signed Percentage -100%–+100%"
-  #   size: 1
-  #   description: "Bipolarer Prozentwert −100%–+100%, als 0x00–0xFF kodiert (0x00≈−100%, 0x80=0%, 0xFF=+100%)"
-  #   encoding:
-  #     method: "linear_scaled"
-  #   scaling:
-  #     type: "linear_bipolar"
-  #     unit: "%"
-  #     center:   { raw: 0x80, physical: 0.0 }
-  #     raw:      { min: 0,    max: 255      }
-  #     physical: { min: -100.0, max: 100.0  }
-  #     note: "Leichte Asymmetrie: (0x00→≈−100.8%). Mittelwert 0x80 entspricht exakt 0%."
-  #   range:
-  #     raw_min: 0
-  #     raw_max: 255
-  #     physical_min: -100.0
-  #     physical_max: 100.0
-  #     physical_unit: "%"
 
   # uint8_cw_pitch:
   #   name: "CW Pitch Frequency 300–900 Hz"
@@ -396,16 +403,6 @@ data_types:
   #     - "0xFF: Stop CW message"
   #     - "0x5E (^): No inter-character space"
   #   example: "A=0x41, 1=0x31, Space=0x20"
-
-  # boolean:
-  #   name: "Boolean Flag"
-  #   size: 1
-  #   description: "Single byte boolean value for all ON/OFF, Open/Close, sharp/soft, ... settings"
-  #   encoding:
-  #     method: "direct"
-  #   values:
-  #     false: 0x00
-  #     true: 0x01
 
   # data_block:
   #   name: "Variable Length Data Block"
