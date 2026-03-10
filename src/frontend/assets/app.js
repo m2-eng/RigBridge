@@ -546,9 +546,9 @@ function setupFormHandlers() {
 
   // Initialer Load der Logs beim Seitenload
   setTimeout(() => {
-    const logsTab = document.getElementById('logs-tab');
-    if (logsTab && !logsTab.innerHTML.includes('No logs')) {
-      // Lade nur Logs, wenn der Tab noch leer ist
+    const logsContainer = document.getElementById('logs-container');
+    if (logsContainer && !logsContainer.innerHTML.includes('No logs')) {
+      // Lade nur Logs, wenn der Bereich noch leer ist
       loadLogs(100).catch(console.error);
     }
   }, 1000);
