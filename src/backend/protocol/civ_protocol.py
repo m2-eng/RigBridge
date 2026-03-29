@@ -14,6 +14,7 @@ from enum import Enum
 from .base_protocol import BaseProtocol, CommandResult
 from ..config.logger import RigBridgeLogger
 from ..transport.transport_manager import TransportManager
+from ..logbook import LogbookManager
 
 logger = RigBridgeLogger.get_logger(__name__)
 
@@ -734,6 +735,7 @@ class CIVProtocol(BaseProtocol):
         protocol_file: Path,
         manufacturer_file: Optional[Path] = None,
         usb_connection=None,
+        logbook: Optional[LogbookManager] = None,
     ):
         """
         Initialisiert das CI-V Protokoll.
@@ -742,6 +744,7 @@ class CIVProtocol(BaseProtocol):
             protocol_file: Pfad zur YAML-Protokolldefinition
             manufacturer_file: Pfad zur Hersteller-YAML
             usb_connection: USBConnection-Instanz (optional)
+            logbook: Logbook-Instanz (optional)
         """
         super().__init__(protocol_file, manufacturer_file)
 
@@ -754,6 +757,8 @@ class CIVProtocol(BaseProtocol):
 
         # Parser für Radio-ID-Validierung
         self._parser = self._executor.parser
+
+        self.logbook = logbook
 
         logger.info(
             f'CIVProtocol initialized with {len(self._parser.commands)} commands'
@@ -918,14 +923,19 @@ class CIVProtocol(BaseProtocol):
                 # Parsed data vorbereiten (vereinfacht)
                 parse_data = self._executor._decode_response(matching_command.name, payload)  # Vorbereiten für zukünftiges Parsing
 
-                parsed_data = {
-                    'command': matching_command.name,
-                    'raw_payload': payload.hex().upper(),
-                    # TODO: Frequency/Mode-Parsing hier einfügen wenn YAML-Definitionen bereit
-                }
+                if matching_command.name == 'receive_frequency_data':
+                    data = parse_data[0]['frequency']
+                    await self.logbook.update_cached_status(frequency_hz=data, mode=None, power_w=None)
+                elif matching_command.name == 'receive_mode_data':
+                    data = parse_data[0]['mode']
+                    await self.logbook.update_cached_status(frequency_hz=None, mode=data, power_w=None)
+                elif matching_command.name == 'read_rf_power':
+                    power_max = 10  # [W] Annahme: Maximalwert für Leistung, kann je nach Gerät variieren
+                    power = parse_data[0]['power_w'] * power_max
+                    await self.logbook.update_cached_status(frequency_hz=None, mode=None, power_w=power)
 
                 # Handler benachrichtigen
-                self._notify_unsolicited_handlers(parsed_data)
+                self._notify_unsolicited_handlers(parse_data)
             else:
                 logger.debug(
                     f'Unsolicited frame with unknown command: 0x{cmd:02X} '

@@ -33,6 +33,7 @@ from ..protocol.base_protocol import CommandResult
 from ..transport import USBConnection, TransportStatus
 from ..cat.cat_client import WavelogCatClient
 from ..cat.connection_state import CatConnectionState, CatConnectionStatus
+from ..logbook import LogbookManager, LogbookConnectionConfig, WavelogLogbookClient
 from src import __version__
 
 logger = RigBridgeLogger.get_logger(__name__)
@@ -57,9 +58,11 @@ def _get_or_create_protocol_manager() -> ProtocolManager:
             manufacturer_file = config.device.get_manufacturer_path()
 
             # CIVProtocol-Instanz erstellen
+            logbook_manager = _cat_client_state.get('manager')
             protocol = CIVProtocol(
                 protocol_file=protocol_file,
-                manufacturer_file=manufacturer_file
+                manufacturer_file=manufacturer_file,
+                logbook=logbook_manager,
             )
             # Konfigurierte Adressen aus config.json haben Vorrang vor YAML-Defaults.
             protocol.set_addresses(
@@ -360,6 +363,7 @@ class WavelogConfigUpdate(BaseModel):
     api_url: Optional[str] = None
     api_key_or_secret_ref: Optional[str] = None
     polling_interval: Optional[int] = None
+    logbook_update_interval: Optional[int] = None
     radio_name: Optional[str] = None
     station_id: Optional[str] = None
     wavelog_gate_http_base: Optional[str] = None
@@ -432,6 +436,7 @@ _cat_client_state = {
     'client': None,
     'task': None,
     'running': False,
+    'manager': None,
     'last_update': None,
     'last_send_success': None,
     'last_test_success': None,
@@ -679,81 +684,48 @@ async def start_cat_update_task(update_interval: Optional[int] = None):
         logger.warning('CAT update task already running')
         return
 
-    interval = update_interval or config.wavelog.polling_interval
+    raw_polling_interval = update_interval if update_interval is not None else config.wavelog.polling_interval
+    # Polling ist Backup-Fallback und darf deshalb deutlich groesser sein.
+    polling_interval = max(10, min(300, int(raw_polling_interval)))
+    # Update-Intervall steuert, wie schnell geaenderte Daten ans Logbuch gehen.
+    raw_logbook_interval = config.wavelog.logbook_update_interval
+    logbook_update_interval = max(1, min(5, int(raw_logbook_interval)))
+
+    client = await _get_or_create_cat_client()
+    if not client:
+        _cat_client_state['last_send_success'] = False
+        return
+
+    manager = LogbookManager()
+    await manager.register_connection(
+        LogbookConnectionConfig(
+            connection_id='wavelog-default',
+            connection_type='wavelog',
+            enabled=True,
+            debounce_seconds=logbook_update_interval,
+        ),
+        WavelogLogbookClient(client),
+    )
+    await manager.start_polling(_get_radio_status, interval_seconds=polling_interval)
+
+    _cat_client_state['manager'] = manager
+
+    protocol_manager = _global_protocol_manager
+    if protocol_manager:
+        protocol = protocol_manager.get_protocol()
+        if isinstance(protocol, CIVProtocol):
+            protocol.logbook = manager
+
     _cat_client_state['running'] = True
-    logger.info(f'WaveLog CAT update task gestartet (Intervall: {interval}s)')
-
-    async def cat_update_loop():
-        """Endlosschleife für zyklische Status-Updates."""
-        consecutive_failures = 0
-
-        while _cat_client_state['running']:
-            try:
-                # Client initialisieren wenn nötig
-                client = await _get_or_create_cat_client()
-
-                if client:
-                    # Radio-Status auslesen
-                    status = await _get_radio_status()
-
-                    # An WaveLog senden wenn Daten vorhanden
-                    if status['frequency_hz'] and status['mode']:
-                        success = await client.send_radio_status(
-                            frequency_hz=status['frequency_hz'],
-                            mode=status['mode'],
-                            power_w=status['power_w'],
-                        )
-
-                        if success:
-                            consecutive_failures = 0
-                            _cat_client_state['last_send_success'] = True
-                            _cat_client_state['last_error'] = None
-                            _cat_client_state['connection_state'].update_status(
-                                CatConnectionStatus.CONNECTED
-                            )
-                            logger.debug(
-                                f'Radio-Status an WaveLog gesendet: '
-                                f'{status["frequency_hz"]} Hz, {status["mode"]}'
-                            )
-                            _cat_client_state['last_update'] = asyncio.get_event_loop().time()
-                        else:
-                            consecutive_failures += 1
-                            _cat_client_state['last_send_success'] = False
-                            _cat_client_state['last_error'] = 'WaveLog-Update fehlgeschlagen'
-                            if getattr(client, 'last_error_kind', None) == 'auth':
-                                _cat_client_state['connection_state'].update_status(
-                                    CatConnectionStatus.WARNING,
-                                    error='WaveLog API-Key/Authentifizierung fehlgeschlagen',
-                                )
-                            else:
-                                _cat_client_state['connection_state'].update_status(
-                                    CatConnectionStatus.DISCONNECTED,
-                                    error='WaveLog-Update fehlgeschlagen',
-                                )
-                            if consecutive_failures % 6 == 1:
-                                logger.warning(
-                                    f'WaveLog-Update fehlgeschlagen '
-                                    f'({consecutive_failures}x)'
-                                )
-                    else:
-                        logger.debug('Radio-Status unvollständig, überspringe Update')
-
-            except Exception as e:
-                logger.error(f'Fehler im CAT-Update-Loop: {e}')
-                consecutive_failures += 1
-                _cat_client_state['last_send_success'] = False
-                _cat_client_state['last_error'] = f'Fehler im CAT-Update-Loop: {e}'
-                _cat_client_state['connection_state'].update_status(
-                    CatConnectionStatus.DISCONNECTED,
-                    error=f'Fehler im CAT-Update-Loop: {e}',
-                )
-
-            # Warte bis zum nächsten Update
-            await asyncio.sleep(interval)
-
-    # Starte Task
-    task = asyncio.create_task(cat_update_loop())
-    _cat_client_state['task'] = task
+    _cat_client_state['last_error'] = None
+    _cat_client_state['connection_state'].update_status(CatConnectionStatus.CONNECTED)
+    logger.info(
+        (
+            'WaveLog CAT update task gestartet '
+            f'(Polling-Intervall: {polling_interval}s, '
+            f'Logbook-Update-Intervall: {logbook_update_interval}s)'
+        )
+    )
 
 
 async def stop_cat_update_task():
@@ -761,19 +733,23 @@ async def stop_cat_update_task():
     _cat_client_state['running'] = False
     _cat_client_state['connection_state'].update_status(CatConnectionStatus.DISCONNECTED)
 
-    # Task beenden
-    if _cat_client_state['task']:
+    manager = _cat_client_state.get('manager')
+    if manager:
         try:
-            _cat_client_state['task'].cancel()
-            await _cat_client_state['task']
-        except asyncio.CancelledError:
-            pass
+            await manager.stop_polling()
+            await manager.clear_connections()
         except Exception as e:
-            logger.error(f'Fehler beim Stoppen des CAT-Tasks: {e}')
+            logger.error(f'Fehler beim Stoppen des Logbook-Managers: {e}')
         finally:
-            _cat_client_state['task'] = None
+            _cat_client_state['manager'] = None
 
-    # Client schließen
+    protocol_manager = _global_protocol_manager
+    if protocol_manager:
+        protocol = protocol_manager.get_protocol()
+        if isinstance(protocol, CIVProtocol):
+            protocol.logbook = None
+
+    # Fallback: direkter Client wird weiterhin sauber geschlossen
     if _cat_client_state['client']:
         try:
             await _cat_client_state['client'].close()
@@ -781,6 +757,8 @@ async def stop_cat_update_task():
             logger.error(f'Fehler beim Schließen des CAT-Clients: {e}')
         finally:
             _cat_client_state['client'] = None
+
+    _cat_client_state['task'] = None
 
     logger.info('WaveLog CAT update task gestoppt')
 
@@ -793,6 +771,11 @@ def get_cat_status() -> Dict[str, Any]:
         Dict mit enabled, running, last_update
     """
     config = ConfigManager.get()
+    manager = _cat_client_state.get('manager')
+    manager_status = manager.get_status() if manager else {}
+    if manager_status.get('cached_sequence', 0) > 0:
+        _cat_client_state['last_update'] = manager_status.get('last_send_ts')
+
     return {
         'enabled': config.wavelog.enabled,
         'running': _cat_client_state['running'],
@@ -804,6 +787,7 @@ def get_cat_status() -> Dict[str, Any]:
         'last_test_success': _cat_client_state['last_test_success'],
         'last_error_kind': getattr(_cat_client_state['client'], 'last_error_kind', None) if _cat_client_state['client'] else None,
         'last_error': _cat_client_state['last_error'] or _cat_client_state['connection_state'].last_error,
+        'logbook_manager': manager_status,
     }
 
 
@@ -1557,12 +1541,6 @@ def create_router() -> APIRouter:
                 _cat_client_state['last_error'] = 'WaveLog is not enabled'
                 return {'success': False, 'message': 'WaveLog is not enabled'}
 
-            # Client holen/erstellen
-            client = await _get_or_create_cat_client()
-            if not client:
-                _cat_client_state['last_send_success'] = False
-                return {'success': False, 'message': 'Failed to create CAT client'}
-
             # Status auslesen
             status = await _get_radio_status()
 
@@ -1575,12 +1553,27 @@ def create_router() -> APIRouter:
                     'status': status,
                 }
 
-            # An WaveLog senden
-            success = await client.send_radio_status(
-                frequency_hz=status['frequency_hz'],
-                mode=status['mode'],
-                power_w=status['power_w'],
-            )
+            manager = _cat_client_state.get('manager')
+            if manager:
+                await manager.update_cached_status(
+                    frequency_hz=status['frequency_hz'],
+                    mode=status['mode'],
+                    power_w=status['power_w'],
+                )
+                flush_result = await manager.flush_now()
+                success = any(flush_result.values()) if flush_result else False
+            else:
+                # Fallback fuer manuellen Versand ohne gestarteten Background-Task.
+                client = await _get_or_create_cat_client()
+                if not client:
+                    _cat_client_state['last_send_success'] = False
+                    return {'success': False, 'message': 'Failed to create CAT client'}
+
+                success = await client.send_radio_status(
+                    frequency_hz=status['frequency_hz'],
+                    mode=status['mode'],
+                    power_w=status['power_w'],
+                )
 
             _cat_client_state['last_send_success'] = success
             if success:
@@ -1588,7 +1581,8 @@ def create_router() -> APIRouter:
                 _cat_client_state['connection_state'].update_status(CatConnectionStatus.CONNECTED)
                 _cat_client_state['last_update'] = asyncio.get_event_loop().time()
             else:
-                if getattr(client, 'last_error_kind', None) == 'auth':
+                client = _cat_client_state.get('client')
+                if client and getattr(client, 'last_error_kind', None) == 'auth':
                     _cat_client_state['last_error'] = 'WaveLog API-Key/Authentifizierung fehlgeschlagen'
                     _cat_client_state['connection_state'].update_status(
                         CatConnectionStatus.WARNING,

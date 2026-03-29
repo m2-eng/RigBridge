@@ -11,13 +11,14 @@
 > Versionierung und Nachvollziehbarkeit erfolgen über Git.
 >
 > **Status-Legende:**
+>
 > | Symbol | Bedeutung |
 > |---|---|
 > | ⬜ | Nicht begonnen |
-> | 🔄 | In Arbeit |
-> | 🔄 | Geändert |
+> | 🔄 | In Arbeit / teilweise umgesetzt |
+> | ✏️ | Geändert gegenüber ursprünglicher Anforderung |
 > | ✅ | Umgesetzt |
-> | ❌ | Verworfen / nicht relevant |
+> | ❌ | Verworfen / nicht mehr relevant |
 
 ---
 
@@ -25,10 +26,10 @@
 
 RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 
-1. Verbindung zu einem Amateurfunkgerät über **USB / Serial** mittels **CI-V-Protokoll** (herstellerspezifisch, primär ICOM).
-2. Bereitstellung einer **REST-API** für interne Nutzung (Frontend) und externe Systeme.
-3. Bereitstellung einer **CAT-Schnittstelle** (Hamlib-kompatibel / Wavelog-kompatibel) für die Logbuch-Software **Wavelog**.
-4. Einfache **Browser-Oberfläche** zur Konfiguration der Anwendung.
+1. Verbindung zu einem Amateurfunkgerät über **USB / Serial** mittels **CI-V-Protokoll** (primär ICOM).
+2. Bereitstellung einer **REST-API** für Frontend und externe Integrationen.
+3. Bereitstellung einer **Wavelog-CAT-Integration** (HTTP-basiert, inkl. Polling und manueller Trigger).
+4. Bereitstellung einer **Browser-Oberfläche** zur Konfiguration und Diagnose.
 
 ---
 
@@ -37,271 +38,248 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | Akteur | Beschreibung |
 |---|---|
 | **Benutzer** | Bedient die Browser-Oberfläche zur Konfiguration |
-| **Wavelog** | Externe Software, die die CAT-Schnittstelle konsumiert |
-| **Funkgerät** | Hardware (z.B. ICOM IC-7300), die über USB / Serial angesteuert wird |
+| **Wavelog** | Externe Software, die CAT-Daten konsumiert |
+| **Funkgerät** | Hardware (z.B. ICOM IC-7300/IC-905), die über USB/Serial angebunden ist |
 
 ---
 
 ## 3. Funktionale Anforderungen
 
-## 3.1 Browser-Oberfläche (Frontend)
+### 3.1 Browser-Oberfläche (Frontend)
 
 | ID | Status | Anforderung |
 |---|---|---|
-| UI-01 | ✅ Umgesetzt | Die Oberfläche ist über einen Browser erreichbar (kein separates Installationspaket nötig). |
-| UI-02 | 🔄 Geändert  | Die Oberfläche zeigt den aktuellen Verbindungsstatus (USB/LAN, CAT) an, wobei nur der aktive Verbindungstyp (USB/LAN/SIM) angezeigt wird. |
-|---|---|---|
-| UI-03 | ✅ Umgesetzt | Einstellungsseite: USB-Verbindung konfigurieren (Port, Baud-Rate, Serial-Einstellungen). |
-|---|---|---|
-| UI-04 | 🔄 Geändert  | Einstellungsseite: Gerät auswählen (Dropdown aus verfügbaren YAML-Gerätedateien ohne die Hersteller YAML-Datei). |
-|---|---|---|
-| UI-05 | ✅ Umgesetzt | Einstellungsseite: CAT-Schnittstelle konfigurieren (Wavelog-URL, API-Key, wenn Verbindung möglich, dann Dorp-Down für Stationsauswahl). |
-| UI-14 | ✅ Umgesetzt | Das Drop-Down bzgl. der Stataionsauswahl (CAT-Schnittstelle) bekommt seine Daten von Wavelog. |
-| UI-15 | ✅ Umgesetzt | Die Oberfläche soll eine Test/Aktualisieren Button haben, welche die Verbindung zu Wavelog manuell testet. |
-| UI-16 | ✅ Umgesetzt | Das Resultat des Verbindsungstests zu Wavelog soll in der Oberfläche angezeigt werden (keine PopUp-Anzeige; eine Status Zeile Einfügen). |
-|---|---|---|
-| UI-06 | 🔄 Geändert  | Einstellungsseite: API-Server konfigurieren. (Host nur lesend, Server-Port, Log-Level, HTTPS Aktivierung). |
-|---|---|---|
-| UI-07 | ✅ Umgesetzt | Alle Formulare bieten clientseitige Validierung vor dem Absenden. |
-| UI-08 | ✅ Umgesetzt | Das UI ist responsiv und auf gängigen Desktop-Browsern nutzbar (Chrome, Firefox, Edge). |
-| UI-09 | ✅ Umgesetzt | Das UI kommt ohne externe CSS-Frameworks aus (kein Bootstrap, Tailwind o.Ä.), sofern nicht explizit anders entschieden. |
-| UI-10 | ✅ Umgesetzt | Es gibt **keine** Steuerungsmöglichkeit des Funkgeräts (Frequenz setzen, Modus wechseln) über das UI – nur Konfiguration. |
-| UI-11 | ✅ Umgesetzt | Der Benutzer soll zwischen Light und Dark-Mode in der Benutzer Oberfläche umschalten können. |
-| UI-12 | ✅ Umgesetzt | Der Benutzer soll die Möglichkeit haben die Farbgestalltung über eine css-Datei (Theme-Datei) zu beeinflussen. | 
-| UI-13 | ✅ Umgesetzt | Diese Theme-Datei ist auch außerhalb des Docker Container sichtbar. (nur lesend für Docker Container, wenn nicht vorhanden die standard Theme verwenden) |
+| UI-01 | ✅ | Die Oberfläche ist über einen Browser erreichbar (kein separates Installationspaket nötig). |
+| UI-02 | ✏️ | Die Oberfläche zeigt den Verbindungsstatus als **USB-Status** und **CAT-Status** an. Ein LAN/SIM-spezifischer Status ist derzeit nicht separat visualisiert. |
+| UI-03 | ✅ | Einstellungsseite für USB-Verbindung (Port, Baud-Rate, Serial-Parameter). |
+| UI-04 | ✅ | Gerätauswahl per Dropdown aus verfügbaren Geräte-YAML-Dateien (`/api/devices`), ohne Hersteller-Meta-Dateien (`manufacturer.yaml`, `meta.yaml`). |
+| UI-05 | ✅ | Einstellungsseite für Wavelog-Integration (URL, API-Key/Secret-Ref, Polling, Station). |
+| UI-06 | ✏️ | Einstellungsseite für API-Server: **Host ist fest vorgegeben**, konfigurierbar sind Port (nur außerhalb Container), Log-Level, Health-Check, HTTPS-Flag. |
+| UI-07 | ✅ | Formulare bieten clientseitige Validierung vor dem Absenden. |
+| UI-08 | ✅ | UI ist responsiv und für gängige Desktop-Browser nutzbar (Chrome, Firefox, Edge). |
+| UI-09 | ✅ | UI kommt ohne externes CSS-Framework aus. |
+| UI-10 | ✅ | Keine direkte Funkgeräte-Steuerung über UI-Widgets; UI dient primär Konfiguration/Status/Diagnose (Befehlsausführung erfolgt über API, nicht als dedizierte Steueroberfläche). |
+| UI-11 | ✅ | Benutzer kann zwischen Light- und Dark-Mode umschalten. |
+| UI-12 | ✅ | Farbgestaltung ist über Theme-CSS anpassbar. |
+| UI-13 | ✅ | Theme-Datei ist außerhalb des Containers verfügbar und wird eingebunden (`./theme.css` -> `src/frontend/assets/theme.css`). |
+| UI-14 | ✅ | Stations-Dropdown bezieht Daten aus Wavelog (`/api/wavelog/stations`). |
+| UI-15 | ✅ | Manuelle Test/Aktualisieren-Funktion für Wavelog-Verbindung ist vorhanden. |
+| UI-16 | ✅ | Ergebnis des Wavelog-Verbindungstests wird als Statuszeile im UI angezeigt (kein Popup zwingend). |
+| UI-17 | ✅ | UI zeigt verfügbare YAML-Kommandos inkl. Suche und Refresh (`/api/commands`). |
+| UI-18 | ✅ | UI bietet einen Log-Bereich mit Filter/Limit und Abruf über API (`/api/logs`). |
+| UI-19 | ⬜ | Wavelog-API-Key wird im UI als Passwortfeld (`type="password"`) dargestellt. |
 
+### 3.2 Application Layer
 
-## 3.2 Application Layer
-
-### 3.2.1 API
+#### 3.2.1 API
 
 | ID | Status | Anforderung |
 |---|---|---|
-| API-01 | ✅ Umgesetzt | Das System stellt eine REST-API auf einem konfigurierbaren Port bereit (Standard: 8080). |
-| API-14 | ✅ Umgesetzt | Nur die hier gelisteten APIs sollen implementiert werden. Alte `/command/{command_name}` Endpoints wurden entfernt. |
-| API-02 | ✅ Umgesetzt | `GET /api/status` – liefert den aktuellen Verbindungsstatus (USB/LAN/SIM, CAT). |
-| API-11 | ✅ Umgesetzt | `GET /api/rig/command?name=<command>` – generische API: Führt einen lesenden Befehl aus der YAML-Befehlsliste aus. |
-| API-12 | ✅ Umgesetzt | `PUT /api/rig/command` mit Body `{command: str, data: dict}` – generische API: Führt einen schreibenden Befehl aus der YAML-Befehlsliste aus. |
-| API-03 | ✅ Umgesetzt | `GET /api/rig/frequency` – liefert die aktuelle Frequenz des Funkgeräts. |
-| API-05 | ✅ Umgesetzt | `GET /api/rig/mode` – liefert den aktuellen Betriebsmodus. |
-| API-13 | 🔄 In Vorbereitung | `GET /api/rig/power` – liefert die aktuell eingestellte Sendeleistung in Watt [W] zurück. Endpoint existiert, aber Implementierung abhängig von YAML-Definitionen und Geräteunterstützung. |
-| API-07 | ✅ Umgesetzt | `GET /api/config` – liefert die aktuelle Konfiguration. Secrets (API-Keys, Passwörter) werden **niemals** zurückgeliefert (Felder werden durch `***` ersetzt oder  weggelassen). |
-| API-08 | ✅ Umgesetzt | `PUT /api/config` – speichert geänderte Konfigurationswerte persistent. |
-| API-09 | ✅ Umgesetzt | `GET /health` – Health-Check-Endpunkt für Docker und Monitoring. |
-| API-15 | ✅ Umgesetzt | `GET /api/license` – Rückgabe der Lizenz der Applikation |
-| API-10 | ✅ Umgesetzt | Alle Fehlerantworten folgen dem einheitlichen Format: `{ "error": true, "code": "...", "message": "..." }`. |
+| API-01 | ✅ | REST-API auf konfigurierbarem Port (Standard 8080). |
+| API-02 | ✅ | `GET /api/status` liefert Verbindungs-/Systemstatus inkl. CAT-Statusdaten. |
+| API-03 | ✅ | `GET /api/rig/frequency` liefert aktuelle Frequenz. |
+| API-04 | ✅ | `GET /api/rig/s-meter` liefert S-Meter-Werte (raw + dB). |
+| API-05 | ✅ | `GET /api/rig/mode` liefert aktuellen Betriebsmodus. |
+| API-06 | ✅ | `GET /api/commands` listet verfügbare YAML-Kommandos. |
+| API-07 | ✅ | `GET /api/config` liefert Konfiguration mit Secret-Maskierung (`***`). |
+| API-08 | ✅ | `PUT /api/config` speichert geänderte Konfigurationswerte persistent. |
+| API-09 | ✅ | `GET /health` ist als Health-Check-Endpunkt verfügbar. |
+| API-10 | ✅ | Fehlerantworten folgen dem einheitlichen Format `{ "error": true, "code": "...", "message": "..." }`. |
+| API-11 | ✅ | `GET /api/rig/command?name=<command>` führt lesende YAML-Kommandos aus. |
+| API-12 | ✅ | `PUT /api/rig/command` mit `{command, data}` führt schreibende YAML-Kommandos aus. |
+| API-13 | 🔄 | `GET /api/rig/power` existiert, liefert aber abhängig von Gerät/YAML teils `501 Not Implemented`. |
+| API-14 | ✅ | `GET /api/wavelog/test` testet Erreichbarkeit/Auth gegen Wavelog. |
+| API-15 | ✅ | `GET /api/license` liefert Lizenzinhalt. |
+| API-16 | ✅ | `GET /api/wavelog/stations` liefert Stationsliste für UI-Dropdown. |
+| API-17 | ✅ | `GET /api/devices` scannt verfügbare Geräteprotokolle. |
+| API-18 | ✅ | `GET /api/logs` liefert In-Memory-Logs (Limit/Level/Sortierung). |
+| API-19 | ✅ | CAT-Steuerendpunkte sind vorhanden: `/api/cat/start`, `/api/cat/stop`, `/api/cat/status`, `/api/cat/send-now`. |
 
-### 3.2.2 Wavelog Integration
-
-#### CAT Schnittstelle
-
-| ID | Status | Anforderung |
-|---|---|---|
-| CAT-01 | ✅ Umgesetzt | Das System stellt eine CAT-kompatible Schnittstelle auf einem konfigurierbaren Port bereit. |
-| CAT-02 | ✅ Umgesetzt | Die Schnittstelle ist kompatibel mit Wavelog über die Radio-API (`/index.php/api/radio`). |
-| CAT-03 | ✅ Umgesetzt | Der CAT-API-Key zur Authentifizierung gegenüber Wavelog ist konfigurierbar. |
-| CAT-04 | ✅ Umgesetzt | Die Wavelog-API-URL ist konfigurierbar. |
-| CAT-05 | ✅ Umgesetzt | Frequenz und Modus werden per API-Request an Wavelog gemeldet (JSON-Payload mit `key`, `radio`, `frequency`, `mode`, `timestamp`, optional `power`). |
-| CAT-06 | ✅ Umgesetzt | Die CAT-Schnittstelle kann unabhängig von der USB-Verbindung aktiviert/deaktiviert werden. |
-| CAT-07 | ✅ Umgesetzt | Verbindungsfehler zur Wavelog-Instanz werden geloggt und führen nicht zum Absturz. |
-| CAT-08 | ✅ Umgesetzt | Das System unterstützt WaveLogGate-Integration: HTTP-Endpoint (`http://localhost:54321/{frequency}/{mode}`) für QSY-Befehle (Bandmap-Klicks). |
-| CAT-09 | ✅ Umgesetzt | Das System unterstützt WaveLogGate WebSocket (`ws://localhost:54322`) zum Empfangen von Radio-Status-Events. |
-| CAT-10 | ✅ Umgesetzt | Der Radio-Name (z.B. "ICOM IC-905") ist konfigurierbar und wird im API-Payload an Wavelog gesendet. |
-| CAT-11 | ✅ Umgesetzt | Die Station-ID ist optional konfigurierbar für Multi-Station-Setups. |
-| CAT-12 | ✅ Umgesetzt | Bridge-Modus: Radio-Status kann von WaveLogGate WebSocket empfangen und automatisch an Wavelog weitergeleitet werden. |
-| CAT-13 | ✅ Umgesetzt | Payload-Feld `power`: Optional in Wavelog-Payload enthalten; wenn kein CI-V-Befehl im YAML vorhanden, wird das Feld weggelassen (nicht als Dummy gesendet). Wird mit `power_w` Parameter von `send_radio_status()` übertragen wenn verfügbar. |
-| CAT-14 | ✅ Umgesetzt | CAT-Statusübertragung aus USB-Daten ist aktiv für Frequenz/Modus. Fallback bei unvollständigen USB-Daten: Status wird nicht versendet; geloggt als `Radio-Status unvollständig, überspringe Update`. Verhindert ungültige Wavelog-Einträge. |
-| CAT-15 | ⬜ Ausstehend | Für alle im Wavelog-Payload genutzten Felder existieren validierte CI-V-Befehlsmappings pro Gerät (YAML-abhängig). Aktuell fehlen je nach Gerät einzelne Felder (insb. `power`). |
-| CAT-16 | ✅ Umgesetzt | Bei aktivierter Wavelog Integration werden Daten zyklisch (Polling-Intervall, Standard 5s) an Wavelog gesendet sobald eine Radio-Verbindung aktiv ist. Implementiert via Background-Task `start_cat_update_task()` mit Endpoints `/cat/start`, `/cat/stop`, `/cat/send-now`. |
-
-**Hinweis zum aktuellen Payload-Stand (`/index.php/api/radio`):**
-- `key`: Umgesetzt
-- `radio`: Umgesetzt
-- `frequency`: Umgesetzt (USB/CI-V)
-- `mode`: Umgesetzt (USB/CI-V)
-- `timestamp`: Umgesetzt
-- `power`: Teilweise umgesetzt (optional, derzeit ggf. leer/Dummy wenn kein CI-V-Befehl verfügbar)
-
-## 3.3 Interpreter Layer
-
-### 3.3.1 Protokolldefinitionen (YAML)
+#### 3.2.2 Wavelog Integration (CAT)
 
 | ID | Status | Anforderung |
 |---|---|---|
-| YAML-01 | ✅ Umgesetzt | Pro Funkgerät existiert eine eigene YAML-Datei in `protocols/manufacturers/<hersteller>/`. |
-| YAML-02 | 🔄 Geändert | Pro Hersteller kann eine Hersteller-YAML mit gemeinsamen Definitionen existieren. |
-| YAML-03 | ⬜ Ausstehend | In `protocols/general/` befinden sich herstellerübergreifende, generische Datentypen. |
-| YAML-08 | ⬜ Ausstehend | Beim Laden der YAML-Gerätedatei werden die Datentypen, welche auf eine gemeinsame Definition (Hersteller und/oder generisch) verweisen durch jene ersetzt. |
-|---|---|---|
-| YAML-04 | ✅ Umgesetzt | Das System lädt die YAML-Datei beim Start anhand des konfigurierten Gerätenamens. |
-| YAML-05 | 🔄 In Entwicklung | Das System validiert die YAML-Datei beim Laden gegen ein definiertes Schema. |
-| YAML-06 | ✅ Umgesetzt | Ein unbekanntes oder fehlendes Gerät erzeugt eine klare Fehlermeldung beim Start. |
-| YAML-07 | ✅ Umgesetzt | Neue Geräte können durch Ablegen einer YAML-Datei ohne Code-Änderung hinzugefügt werden. |
+| CAT-01 | ✅ | Wavelog-Radio-API (`index.php/api/radio`) wird mit Payload (`key`, `radio`, `frequency`, `mode`, `timestamp`, optional `power`, optional `station_id`) bedient. |
+| CAT-02 | ✅ | Wavelog-API-Key ist konfigurierbar (direkter Key oder Secret-Referenz). |
+| CAT-03 | ✅ | Wavelog-API-URL ist konfigurierbar. |
+| CAT-04 | ✅ | Frequenz und Modus werden zyklisch an Wavelog gemeldet (Polling-Task). |
+| CAT-05 | ✅ | CAT-Integration kann unabhängig von USB aktiviert/deaktiviert werden. |
+| CAT-06 | ✅ | Verbindungsfehler zu Wavelog werden geloggt und führen nicht zum Absturz. |
+| CAT-07 | ✅ | Radio-Name ist konfigurierbar und wird im Payload gesendet. |
+| CAT-08 | ✅ | Station-ID ist optional konfigurierbar und wird bei gesetztem Wert übertragen. |
+| CAT-09 | ✅ | Fallback bei unvollständigem Radio-Status: Update wird übersprungen, kein ungültiger Payload. |
+| CAT-10 | 🔄 | Optionales Feld `power` wird nur bei verfügbarer Leistung gesendet; geräteabhängig noch nicht flächendeckend. |
+| CAT-11 | 🔄 | WaveLogGate HTTP (`.../{frequency}/{mode}`) und WebSocket-Client sind im CAT-Client vorhanden, aber End-to-End-Bridge-Fluss ist nicht vollständig produktiv verschaltet. |
+| CAT-12 | ✅ | LogbookManager als zentrale Orchestrierungsschicht ist eingeführt; Wavelog ist über einen Adapter (`BaseLogbookClient`-Konzept) angebunden. |
+| CAT-13 | ✅ | Debounce-Mechanismus ist umgesetzt: Versand an Logbücher erfolgt verzögert und nur bei stabilen Daten. |
+| CAT-14 | ✅ | Debounce-Zeit ist begrenzt auf Mindestwert 1 Sekunde und Maximalwert 5 Sekunden. |
+| CAT-15 | ✅ | Coalescing ist umgesetzt: identische Status-Updates werden nicht erneut versendet. |
+| CAT-16 | ✅ | Sequence-/Idempotenzschutz ist umgesetzt: nur der neueste Snapshot wird versendet, veraltete geplante Sends werden verworfen. |
+| CAT-17 | 🔄 | Multi-Target-Betrieb (mehrere parallele Logbuch-Verbindungen) ist architektonisch vorbereitet, produktive Mehrfach-Konfiguration folgt in einem nächsten Schritt. |
 
-### 3.3.2 CI-V – Protokollverarbeitung
+### 3.3 Interpreter Layer
 
-| ID | Status | Anforderung |
-|---|---|---|
-| CIV-01 | ✅ Umgesetzt | Das System baut CI-V-Befehle gemäß der gerätespezifischen YAML-Protokolldatei auf. |
-| CIV-02 | ✅ Umgesetzt | Das System interpretiert CI-V-Antworten des Funkgeräts und wandelt sie in strukturierte Daten um. |
-| CIV-03 | ✅ Umgesetzt | Unterstützte Befehle werden aus der YAML-Datei des aktiven Geräts geladen – kein Hardcoding von Befehlen im Code. |
-| CIV-04 | ✅ Umgesetzt | Das System unterstützt den CI-V-Befehl zum Lesen der aktuellen Frequenz. |
-| CIV-05 | ✅ Umgesetzt | Das System unterstützt den CI-V-Befehl zum Lesen des aktuellen Betriebsmodus (z.B. SSB, CW, FM). |
-| CIV-06 | ✅ Umgesetzt | Das System unterstützt das Setzen der Frequenz über CI-V. |
-| CIV-07 | ✅ Umgesetzt | Das System unterstützt das Setzen des Betriebsmodus über CI-V. |
-| CIV-08 | ✅ Umgesetzt | Unbekannte oder fehlerhafte CI-V-Antworten werden geloggt und führen nicht zu einem Absturz. |
-
-### 3.3.3 Unsolicited Frames Handling
+#### 3.3.1 Protokolldefinitionen (YAML)
 
 | ID | Status | Anforderung |
 |---|---|---|
-| UNSOL-01 | 🔄 In Arbeit | Das System muss zwischen **Responses auf angefragte Befehle** und **Unsolicited Frames** (von der Hardware selbst initiiert) unterscheiden können. |
-| UNSOL-02 | 🔄 In Arbeit | Die Unterscheidung erfolgt durch Vergleich der CI-V Command-Bytes: `cmd` (Main-Command) und optional `subcmd` (Sub-Command). Ein Response passt nur, wenn beide Bytes dem **gesendeten Request** entsprechen. |
-| UNSOL-03 | 🔄 In Arbeit | Unsolicited Frames werden **verworfen** und nicht als Befehlsantwort interpretiert. Optional Pufferung für spätere Event-Verarbeitung (future feature). |
-| UNSOL-04 | 🔄 In Arbeit | Verworfene Unsolicited Frames werden auf **DEBUG-Level** geloggt: `"Unsolicited Frame verworfen: cmd=0x03, subcmd=[0x00], hex=FE FE 94 E0 03 00 ..."` |
-| UNSOL-05 | 🔄 In Arbeit | **Timeout-Schutz:** Wenn kein passendes Response-Frame innerhalb eines konfigurierbaren Zeitlimits (z.B. 0,7s für normale Befehle) empfangen wird, wird die Funktion mit Fehler zurückgegeben, nicht mit Unsolicited-Frame fehlinterpretiert. |
-| UNSOL-06 | 🔄 In Arbeit | Die Receive-Funktion ist **Thread-Safe** durch Verwendung des existierenden TransportManager-Locks (`asyncio.Lock()`). Nur ein Befehl hat gleichzeitig Zugriff auf die Empfangsfunktion. |
-| UNSOL-07 | 🔄 In Arbeit | Implementiert als neue Methode `read_response_with_command_filter()` in `USBConnection`, die den erwarteten `cmd` und `subcmd` als Parameter erwartet. Fallback auf alte `read_response()` ist nicht mehr notwendig, sobald diese vollständig migriert ist. |
-| UNSOL-08 | ⬜ Ausstehend | Das System implementiert ein **Response-Tracking-System**, das erwartete Antworten (solicited) von unsolicited frames unterscheidet. Erwartete Antworten werden an den wartenden Command-Handler weitergeleitet, unsolicited frames in die Event-Queue. |
-| UNSOL-09 | ⬜ Ausstehend | Beim Senden eines Befehls wird der erwartete Response-Frame (cmd/subcmd) im System registriert (z.B. via `_expected_responses`-Set oder ähnliche Tracking-Struktur). Nach Erhalt der Antwort oder Timeout wird die Registrierung entfernt. |
-| UNSOL-10 | ⬜ Ausstehend | Der Background-Reader prüft eingehende Frames gegen registrierte erwartete Antworten: Bei Match → Weiterleitung an Command-Handler (wartende Coroutine), bei Mismatch → unsolicited frame in Event-Queue für Handler-Callbacks. |
+| YAML-01 | ✅ | Pro Funkgerät existiert eine eigene YAML-Datei in `protocols/manufacturers/<hersteller>/`. |
+| YAML-02 | ✅ | Pro Hersteller kann eine Hersteller-YAML mit gemeinsamen Definitionen existieren. |
+| YAML-03 | ⬜ | In `protocols/general/` befinden sich herstellerübergreifende, generische Datentypen. |
+| YAML-04 | ✅ | System lädt beim Start die konfigurierte Geräte-YAML. |
+| YAML-05 | 🔄 | YAML-Validierung gegen konsistentes Schema ist teilweise vorhanden, aber nicht vollständig abgeschlossen. |
+| YAML-06 | ✅ | Unbekanntes/fehlendes Gerät erzeugt klare Fehlermeldung. |
+| YAML-07 | ✅ | Neue Geräte können durch Ablage einer YAML-Datei ohne Codeänderung ergänzt werden. |
+| YAML-08 | ⬜ | Referenzauflösung gemeinsamer Datentypen (Hersteller/Generisch) beim Laden ist noch ausstehend. |
 
-### 3.3.4 Protocol Manager
+#### 3.3.2 CI-V Protokollverarbeitung
 
 | ID | Status | Anforderung |
 |---|---|---|
-| PROT-01 | ✅ Umgesetzt | Das System implementiert einen **ProtocolManager** als zentrale Verwaltungsinstanz für Protokoll-Implementierungen, analog zum TransportManager eine Schicht oberhalb des Transport-Layers. |
-| PROT-02 | ✅ Umgesetzt | Der ProtocolManager ist als **Singleton** implementiert, um systemweit eine einzige Protokoll-Instanz zu garantieren. |
-| PROT-03 | ✅ Umgesetzt | **BaseProtocol** definiert abstrakte Basisklasse für alle Protokolle mit Methoden: `execute_command()`, `list_commands()`, `is_valid_radio_id()`, `handle_unsolicited_frame()`. |
-| PROT-04 | ✅ Umgesetzt | BaseProtocol stellt **Convenience-Methoden** bereit: `get_frequency()`, `get_mode()`, `get_power()` – intern delegieren diese an `execute_command()`. |
-| PROT-05 | ✅ Umgesetzt | **CIVProtocol** implementiert BaseProtocol für CI-V-Protokoll (ICOM), delegiert Befehlsausführung an internen `CIVCommandExecutor`. |
-| PROT-06 | ✅ Umgesetzt | Der ProtocolManager leitet alle **Command-Aufrufe** (generisch und Convenience) an die aktive Protokoll-Instanz weiter. |
-| PROT-07 | ✅ Umgesetzt | **Unsolicited Frame Handling:** Transport registriert Handler beim ProtocolManager, dieser validiert Radio-ID und leitet Frames an Protokoll-Instanz weiter. |
-| PROT-08 | ✅ Umgesetzt | **Radio-ID-Validierung:** ProtocolManager verwirft Frames mit ungültiger Radio-ID (z.B. falsche Preamble, falsche Adresse) vor Weiterleitung an Protokoll. |
-| PROT-09 | ✅ Umgesetzt | **Wavelog-Integration Vorbereitung:** ProtocolManager unterstützt Registrierung von Unsolicited-Frame-Handlern (`register_unsolicited_handler()`) für spätere Auto-Weiterleitung an Wavelog. |
-| PROT-10 | 🔄 In Arbeit | Unsolicited Frame Handler werden benachrichtigt, wenn spezifische Frames empfangen werden (Frequency-Change, Mode-Change) – vollständiges Frame-Parsing in Phase 2. |
-| PROT-11 | 🔄 In Arbeit | **Power-Feature Support:** BaseProtocol definiert `get_power()` Methoden, ProtocolManager leitet diese weiter. Vollständige Implementierung abhängig von YAML-Definitionen. |
-| PROT-12 | ✅ Umgesetzt | Der ProtocolManager stellt Debug-Informationen bereit (`get_protocol_info()`), die aktuelles Protokoll, verfügbare Commands und Status zurückgeben. |
-| PROT-13 | ✅ Umgesetzt | Bei USB-Config-Änderung wird ProtocolManager-Instanz invalidiert und bei nächstem API-Zugriff neu initialisiert (analog TransportManager). |
-| PROT-14 | ✅ Umgesetzt | Die Architektur ist **erweiterbar**: Neue Protokolle (z.B. CAT, HAMLib) können durch Implementierung von BaseProtocol ohne Änderung an ProtocolManager oder API hinzugefügt werden. |
+| CIV-01 | ✅ | CI-V-Befehle werden gemäß gerätespezifischer YAML aufgebaut. |
+| CIV-02 | ✅ | CI-V-Antworten werden interpretiert und in strukturierte Daten gewandelt. |
+| CIV-03 | ✅ | Unterstützte Befehle werden aus YAML geladen (kein Command-Hardcoding als Primärquelle). |
+| CIV-04 | ✅ | Lesen der Frequenz über CI-V ist unterstützt. |
+| CIV-05 | ✅ | Lesen des Modus über CI-V ist unterstützt. |
+| CIV-06 | ✅ | Setzen der Frequenz über CI-V ist unterstützt. |
+| CIV-07 | ✅ | Setzen des Modus über CI-V ist unterstützt. |
+| CIV-08 | ✅ | Unbekannte/fehlerhafte CI-V-Antworten werden geloggt, ohne Absturz. |
 
-## 3.4 Transport Manager
-
-### 3.4.1 Connection Base Class
+#### 3.3.3 Unsolicited Frames Handling
 
 | ID | Status | Anforderung |
 |---|---|---|
-| TM-01 | ✅ Umgesetzt | BaseTransport definiert abstrakte Schnittstelle für alle Transport-Implementierungen (USB, LAN, SIM) mit gemeinsamer Funktionalität. |
-| TM-02 | ✅ Umgesetzt | Hook-Methoden `_start_background_reader()` und `_stop_background_reader()` sind in BaseTransport definiert und ermöglichen Transport-spezifische Background-Reader-Implementierungen. |
-| TM-03 | ✅ Umgesetzt | BaseTransport stellt Event-Queue (`_unsolicited_queue`) für unsolicited frames bereit und verwaltet Handler-Registrierung. |
-| TM-04 | ✅ Umgesetzt | Methode `_push_unsolicited_frame(frame)` ist non-blocking und legt unsolicited frames in Event-Queue für Handler-Callbacks. |
+| UNSOL-01 | 🔄 | System soll zwischen solicited Responses und unsolicited Frames unterscheiden. |
+| UNSOL-02 | 🔄 | Matching über `cmd`/`subcmd` soll Response-Zuordnung steuern. |
+| UNSOL-03 | 🔄 | Unsolicited Frames sollen nicht als Command-Response fehlinterpretiert werden. |
+| UNSOL-04 | 🔄 | Verwerfungen unsolicited Frames sollen auf DEBUG nachvollziehbar sein. |
+| UNSOL-05 | 🔄 | Timeout-Schutz gegen falsches Frame-Matching ist teilweise vorhanden, aber nicht vollständig command-filter-basiert. |
+| UNSOL-06 | ✅ | Empfangspfad ist thread-safe synchronisiert (Serial-Lock). |
+| UNSOL-07 | ⬜ | Spezifische Methode `read_response_with_command_filter()` in `USBConnection` ist noch nicht umgesetzt. |
+| UNSOL-08 | ⬜ | Vollständiges Response-Tracking-System (wartende Handler vs Event-Queue) ist ausstehend. |
+| UNSOL-09 | 🔄 | Grundstruktur `_expected_responses` ist vorhanden, aber noch nicht funktional angebunden. |
+| UNSOL-10 | ⬜ | Background-Reader-Routing auf erwartete Antworten vs Queue ist noch ausstehend (TODO im Code vorhanden). |
 
-### 3.4.2 Connection State Manager
-
-### 3.4.3 Event-basiertes Datenempfangs-System
-
-| ID | Status | Anforderung |
-|---|---|---|
-| EVT-01 | ✅ Umgesetzt | Das System verwendet ein **ereignisbasiertes** (event-driven) Datenempfangs-Modell statt zeitgesteuertem Polling für unsolicited frames. |
-| EVT-02 | ✅ Umgesetzt | Unsolicited frames werden über eine asyncio.Queue (`_unsolicited_queue`) verarbeitet. Die Listener-Task wartet mit `await queue.get()` auf Events (kein aktives Polling). |
-| EVT-03 | ✅ Umgesetzt | Transport-Implementierungen starten einen kontinuierlichen Background-Reader (`_continuous_reader()`), der eingehende Daten überwacht und bei Empfang `_push_unsolicited_frame()` aufruft. |
-| EVT-04 | ✅ Umgesetzt | Der Background-Reader wird automatisch beim `connect()` gestartet und läuft unabhängig von Handler-Registrierungen. Queue-Listener für Handler werden erst bei tatsächlicher Handler-Registrierung gestartet. |
-| EVT-05 | ✅ Umgesetzt | Die ereignisbasierte Architektur reduziert Latenz und CPU-Last im Vergleich zu zeitgesteuerten Polling-Ansätzen. |
-| EVT-06 | ⬜ Ausstehend | Der Background-Reader unterscheidet zwischen erwarteten Antworten (für aktive Befehle) und unsolicited frames. Erwartete Antworten werden direkt an wartende Command-Handler weitergeleitet, nur unsolicited frames gehen in die Event-Queue. |
-
-### 3.4.4 USB Connection
+#### 3.3.4 Protocol Manager
 
 | ID | Status | Anforderung |
 |---|---|---|
-| USB-01 | ✅ Umgesetzt | Das System stellt eine Verbindung zu einem Funkgerät über einen konfigurierbaren USB/Serial-Port her. |
-| USB-02 | ✅ Umgesetzt | Der Port-Name ist konfigurierbar (Linux: `/dev/ttyUSB0`; Windows: `COM3`, aktuell `COM4`). |
-| USB-03 | ✅ Umgesetzt | Die Baud-Rate ist konfigurierbar (Standardwert: 19200). |
-| USB-04 | ✅ Umgesetzt | Weitere Serial-Parameter sind konfigurierbar: Datenbits, Stoppbits, Parität. |
-| USB-05 | ✅ Umgesetzt | Das System erkennt, ob die USB-Verbindung aktiv oder unterbrochen ist, und meldet den Status über die API. |
-| USB-06 | ✅ Umgesetzt | Bei Verbindungsabbruch versucht das System automatisch, die Verbindung nach konfigurierbarem Intervall wiederherzustellen. |
-| USB-07 | ✅ Umgesetzt | Das System unterstützt sowohl Linux (`/dev/tty*`) als auch Windows (`COM*`) ohne Code-Änderung. |
-| USB-08 | ✅ Umgesetzt | Die Verbindung zum Funkgerät soll zyklisch mittels 'read_transceiver_id' Befehl geprüft werden, da hier eine Antwort erwartet wird. Bei Verbindungsverlust wird automatisch ein Reconnect versucht. |
-| USB-09 | ✅ Umgesetzt | **TransportManager für Ressourcen-Synchronisierung:** Nur EIN Befehl hat zu einem Zeitpunkt Zugriff auf die USB-Ressource. Verhindert Race Conditions zwischen Health-Check und API-Anfragen durch zentrale Koordination mit `asyncio.Lock()`. API-Anfragen erhalten HTTP 503 wenn Lock nicht in Zeit erworben wird. |
-| USB-10 | ✅ Umgesetzt | USBConnection implementiert `_continuous_reader()` als Background-Task, der automatisch beim `connect()` gestartet wird und kontinuierlich USB-Daten überwacht. Empfangene Frames werden über `_push_unsolicited_frame()` in die Event-Queue gelegt. |
-| USB-11 | ✅ Umgesetzt | Der Background-Reader läuft asynchron via `asyncio.create_task()` und nutzt `asyncio.to_thread()` für blockierende Serial-Reads, um Event Loop nicht zu blockieren. Startet automatisch wenn Event Loop verfügbar ist. |
+| PROT-01 | ✅ | ProtocolManager als zentrale Verwaltungsinstanz ist implementiert. |
+| PROT-02 | ✅ | ProtocolManager ist als Singleton umgesetzt. |
+| PROT-03 | ✅ | BaseProtocol definiert zentrale abstrakte Schnittstellen. |
+| PROT-04 | ✅ | Convenience-Methoden `get_frequency()`, `get_mode()`, `get_power()` sind vorhanden. |
+| PROT-05 | ✅ | `CIVProtocol` implementiert BaseProtocol für CI-V. |
+| PROT-06 | ✅ | ProtocolManager delegiert Kommandos an aktive Protokollinstanz. |
+| PROT-07 | ✅ | Unsolicited-Handling mit Vorvalidierung und Delegation ist implementiert. |
+| PROT-08 | ✅ | Radio-ID-Validierung vor Weiterleitung ist implementiert. |
+| PROT-09 | ✅ | Registrierung externer unsolicited Handler ist möglich. |
+| PROT-10 | 🔄 | Vollständiges semantisches Parsing spezifischer unsolicited Frame-Typen ist noch nicht abgeschlossen. |
+| PROT-11 | 🔄 | Power-Unterstützung ist vorhanden, aber YAML-/Geräteabhängigkeit limitiert Vollständigkeit. |
+| PROT-12 | ✅ | Debug-Infos über aktives Protokoll und Kommandos sind abrufbar. |
+| PROT-13 | ✅ | ProtocolManager wird bei USB-/Device-Config-Änderungen invalidiert und neu aufgebaut. |
+| PROT-14 | ✅ | Architektur ist für zusätzliche Protokolle erweiterbar. |
 
-### 3.4.5 LAN Connection
+### 3.4 Transport Layer
 
-Noch nicht definiert
-
-### 3.4.6 SIM Connection (Simulation/Testing)
-
-Noch nicht definiert
-
-## 3.5 Allgemeine Anforderungen
-
-### 3.5.1 Konfiguration
+#### 3.4.1 BaseTransport und Event-System
 
 | ID | Status | Anforderung |
 |---|---|---|
-| CFG-01 | ✅ Umgesetzt | Alle Konfigurationswerte werden persistent in einer JSON-Datei (config.json) gespeichert. |
-| CFG-02 | ✅ Umgesetzt | Die Konfiguration wird beim Start automatisch geladen. |
-| CFG-03 | ✅ Umgesetzt | API-Keys und andere Secrets werden in config.json gespeichert. Optional können Secret-Referenzen via Secret-Provider (HashiCorp Vault) verwendet werden (Format: `path#key`). Direkter API-Key im Klartext ist erlaubt. |
-| CFG-04 | ✅ Umgesetzt | Konfigurierbare Parameter (Mindestumfang): USB-Port, Baud-Rate, Serial-Parameter, CAT-Port, Wavelog-URL, Wavelog-API-Key (direkt oder Secret-Referenz), Gerätename, API-Port, Log-Level. |
-| CFG-05 | ✅ Umgesetzt | Secrets (API-Keys) werden nicht im Klartext in Logdateien ausgegeben. |
-| CFG-07 | ✅ Umgesetzt | Die Konfigurationsdatei kann sowohl von der Applikation als auch von Benutzer bearbeitet werden. |
-| CFG-08 | ✅ Umgesetzt | Der Inhalt der Konfigurationsdatei soll in der Oberflächje angezeigt werden. |
+| TM-01 | ✅ | BaseTransport definiert abstrakte Schnittstelle für Transporte (USB/LAN/SIM). |
+| TM-02 | ✅ | Hook-Methoden für transport-spezifische Background-Reader sind vorhanden. |
+| TM-03 | ✅ | Event-Queue für unsolicited Frames ist vorhanden. |
+| TM-04 | ✅ | `_push_unsolicited_frame()` legt non-blocking in Queue ab. |
+| EVT-01 | ✅ | Ereignisbasiertes Datenempfangsmodell statt Polling für unsolicited Frames ist umgesetzt. |
+| EVT-02 | ✅ | Queue-basierte Verarbeitung (`asyncio.Queue`) ist umgesetzt. |
+| EVT-03 | ✅ | Kontinuierlicher Background-Reader überwacht eingehende Frames. |
+| EVT-04 | ✅ | Reader startet bei `connect()` und läuft unabhängig von Handler-Registrierungen. |
+| EVT-05 | ✅ | Architektur reduziert Last gegenüber aktivem Polling. |
+| EVT-06 | ⬜ | Trennung erwarteter Antworten vs unsolicited Frames im Reader ist noch nicht fertig umgesetzt. |
 
-### 3.5.2 Sicherheit & Verschlüsselung
-
-| ID | Status | Anforderung |
-|---|---|---|
-| SEC-01 | ✅ Umgesetzt | Secrets (API-Key, Passwörter) werden niemals in API-Antworten zurückgeliefert. |
-| SEC-02 | ✅ Umgesetzt | Secrets werden nicht in Log-Einträgen ausgegeben (auch nicht auf `DEBUG`-Level). |
-| SEC-03 | ⬜ Ausstehend | Die Verbindung von RigBridge zu Wavelog erfolgt **ausschließlich über HTTPS** (TLS). `verify=False` ist verboten. |
-| SEC-04 | ✅ Umgesetzt | Der API-Port (8080) wird nur auf `127.0.0.1` gebunden, solange kein Netzwerkzugriff konfiguriert ist. |
-| SEC-05 | 🔄 In Entwicklung | HTTPS für die interne REST-API ist optional aktivierbar (konfigurierbarer Zertifikatspfad), wenn Zugriff über Netzwerk nötig ist. |
-| SEC-06 | ⬜ Ausstehend | Wird HTTPS aktiviert, wird das TLS-Zertifikat validiert (kein `verify=False`). |
-| SEC-07 | ✅ Umgesetzt | Der Wavelog API-Key wird als Passwort-Eingabefeld (`type="password"`) im UI dargestellt. |
-
-### 3.5.3 Logging
+#### 3.4.2 USB Connection
 
 | ID | Status | Anforderung |
 |---|---|---|
-| LOG-01 | ✅ Umgesetzt | Das System schreibt strukturierte Log-Einträge (mindestens: Zeitstempel, Level, Modul, Nachricht). |
-| LOG-02 | ✅ Umgesetzt | Das Log-Level ist konfigurierbar (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
-| LOG-03 | ✅ Umgesetzt | Logs werden auf `stdout` ausgegeben (Docker-kompatibel). |
-| LOG-04 | ✅ Umgesetzt | Optionale Ausgabe in eine Logdatei ist konfigurierbar. |
-| LOG-05 | ✅ Umgesetzt | **Alle** Log-Einträge (inkl. Uvicorn, Framework-Logs) verwenden das gleiche einheitliche Format: `[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [MODULE] MESSAGE` |
-| LOG-06 | ✅ Umgesetzt | Zeitstempel enthalten **Millisekunden** (nicht nur Sekunden). |
+| USB-01 | ✅ | Verbindung über konfigurierbaren USB/Serial-Port wird aufgebaut. |
+| USB-02 | ✅ | Portname ist konfigurierbar (Linux `/dev/tty*`, Windows `COM*`). |
+| USB-03 | ✅ | Baud-Rate ist konfigurierbar. |
+| USB-04 | ✅ | Datenbits, Stoppbits, Parität sind konfigurierbar. |
+| USB-05 | ✅ | Verbindungsstatus wird erkannt und über API bereitgestellt. |
+| USB-06 | ✅ | Bei Verbindungsabbruch erfolgt Reconnect-Versuch im konfigurierten Intervall. |
+| USB-07 | ✅ | Linux und Windows werden ohne Codeänderung unterstützt. |
+| USB-08 | ✅ | Zyklischer Health-Check via `read_transceiver_id` ist implementiert. |
+| USB-09 | ✅ | Synchronisierung konkurrierender Zugriffe erfolgt zentral über Transport/Protocol-Mechanismen. |
+| USB-10 | ✅ | `_continuous_reader()` als Background-Task ist implementiert. |
+| USB-11 | ✏️ | Blockierende Serial-Reads werden im Reader via `run_in_executor` in Threadpool ausgelagert (statt `asyncio.to_thread`). |
 
-### 3.5.4 Deployment / Docker
+### 3.5 Allgemeine Anforderungen
 
-> Docker gilt ausschließlich für **Linux**. Auf Windows wird die Anwendung nativ ausgeführt.
+#### 3.5.1 Konfiguration
 
 | ID | Status | Anforderung |
 |---|---|---|
-| DEP-01 | 🔄 In Entwicklung | Die Anwendung ist auf Linux mit `docker compose up` startbar. |
-| DEP-02 | 🔄 In Entwicklung | Das Docker-Image basiert auf einem schlanken Linux-Basis-Image (Python slim). |
-| DEP-03 | ✅ Umgesetzt | Der Container läuft ohne Root-Rechte (UID 1001). |
-| DEP-04 | ✅ Umgesetzt | Konfigurationswerte werden ausschließlich über `config.json` bereitgestellt; Umgebungsvariablen sind kein Konfigurationskanal. |
-| DEP-05 | ⬜ Ausstehend | USB-Geräte können dem Container auf Linux über den `devices`-Abschnitt übergeben werden. |
-| DEP-06 | ✅ Umgesetzt | Ein Health-Check-Endpunkt ist im `docker-compose.yml` konfiguriert. |
-| DEP-07 | ✅ Umgesetzt | Die Anwendung ist auf Windows **nativ** startbar (`python run_api.py`), ohne Docker. |
-| DEP-08 | ✅ Umgesetzt | Privilege-Eskalation im Container ist verboten (`no-new-privileges:true`). |
-| DEP-09 | ✅ Umgesetzt | Alle Linux-Capabilities sind gedroppt (`cap_drop: ALL`). |
-| DEP-10 | ✅ Umgesetzt | Das Container-Dateisystem ist read-only; `/tmp` als tmpfs mit `noexec,nosuid`. |
-| DEP-11 | ✅ Umgesetzt | Der API-Port wird nur auf `127.0.0.1` gebunden (kein offenes `0.0.0.0`). |
-| DEP-12 | ✅ Umgesetzt | Das Base-Image ist auf eine spezifische Patch-Version gepinnt (kein `:latest`). |
-| DEP-13 | ✅ Umgesetzt | Ressourcen-Limits (CPU und RAM) sind im `docker-compose.yml` definiert. |
-| DEP-14 | ✅ Umgesetzt | Der Container läuft in einem dedizierten Docker-Netzwerk (keine Nutzung des default-Netzwerks). |
-| DEP-15 | ⬜ Ausstehend | Das Image wird regelmäßig auf bekannte CVEs gescannt (`docker scout` oder `trivy`). |
+| CFG-01 | ✅ | Konfigurationswerte werden persistent in `config.json` gespeichert. |
+| CFG-02 | ✅ | Konfiguration wird beim Start automatisch geladen. |
+| CFG-03 | ✅ | Wavelog-API-Key kann direkt oder als Secret-Referenz (`path#key`) konfiguriert werden. |
+| CFG-04 | ✅ | Mindestumfang konfigurierbarer Parameter ist abgedeckt (USB, API, Wavelog, Device). |
+| CFG-05 | ✅ | Secrets werden in Logs redaktioniert. |
+| CFG-06 | ✅ | `GET /api/config` maskiert Secret-Felder. |
+| CFG-07 | ✅ | Konfigurationsdatei ist sowohl durch Anwendung als auch Benutzer änderbar. |
+| CFG-08 | ✅ | Konfigurationsinhalte sind über UI sichtbar und editierbar (mit Laufzeitrestriktionen). |
+
+#### 3.5.2 Sicherheit und TLS
+
+| ID | Status | Anforderung |
+|---|---|---|
+| SEC-01 | ✅ | Secrets werden nicht in API-Responses im Klartext zurückgeliefert. |
+| SEC-02 | ✅ | Secrets werden nicht im Log im Klartext ausgegeben. |
+| SEC-03 | ⬜ | Verbindung RigBridge -> Wavelog wird ausschließlich über HTTPS erzwungen. |
+| SEC-04 | ✏️ | API-Host ist im Backend fest auf `0.0.0.0`; tatsächliche Exponierung wird über Docker-Port-Binding (`127.0.0.1:...`) begrenzt. |
+| SEC-05 | 🔄 | HTTPS-Option für interne REST-API ist in Config/UI vorhanden, aber Serverstart mit TLS-Zertifikaten ist noch nicht vollständig verschaltet. |
+| SEC-06 | ⬜ | Wenn HTTPS aktiv ist, muss Zertifikatsvalidierung durchgängig sichergestellt sein (kein unsicherer Fallback). |
+| SEC-07 | ⬜ | Wavelog-API-Key-Feld im UI als Passwortfeld (`type="password"`). |
+
+#### 3.5.3 Logging
+
+| ID | Status | Anforderung |
+|---|---|---|
+| LOG-01 | ✅ | Strukturierte Logs (Zeit, Level, Modul, Nachricht) sind umgesetzt. |
+| LOG-02 | ✅ | Log-Level ist konfigurierbar (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| LOG-03 | ✅ | Logs werden Docker-kompatibel auf stdout ausgegeben. |
+| LOG-04 | ✅ | Optionale Dateiausgabe ist im Logger vorgesehen (FileHandler). |
+| LOG-05 | ✅ | Einheitliches Log-Format wird inkl. Uvicorn-Loggern angewendet. |
+| LOG-06 | ✅ | Zeitstempel enthalten Millisekunden. |
+
+#### 3.5.4 Deployment / Docker
+
+> Docker gilt für Linux. Auf Windows ist der primäre Weg der native Start.
+
+| ID | Status | Anforderung |
+|---|---|---|
+| DEP-01 | 🔄 | Anwendung ist per `docker compose up` betreibbar (abhängig von vorhandenem Image/Umgebung). |
+| DEP-02 | ✅ | Docker-Image basiert auf schlankem Python-Slim-Image. |
+| DEP-03 | ✅ | Container läuft ohne Root-Rechte (UID 1001 / `appuser`). |
+| DEP-04 | ✅ | App-Konfiguration läuft über `config.json`; Env-Variablen steuern primär Container-/Compose-Runtime. |
+| DEP-05 | ✅ | USB-Geräte können per `devices`-Abschnitt in den Container durchgereicht werden. |
+| DEP-06 | ✅ | Health-Check ist in `docker-compose.yml` konfiguriert. |
+| DEP-07 | ✅ | Anwendung ist auf Windows nativ (`python run_api.py`) startbar. |
+| DEP-08 | ✅ | `no-new-privileges:true` ist gesetzt. |
+| DEP-09 | ✅ | `cap_drop: ALL` ist gesetzt. |
+| DEP-10 | ✅ | Read-only Root-FS + `tmpfs` für `/tmp` ist gesetzt. |
+| DEP-11 | ✅ | Standard-Portmapping bindet auf `127.0.0.1` (über Compose-`BIND_ADDRESS`). |
+| DEP-12 | ⬜ | Base-Image ist auf Patch-Version gepinnt (derzeit nur `python:3.11-slim`). |
+| DEP-13 | ✅ | Ressourcenlimits für CPU/RAM sind in Compose definiert. |
+| DEP-14 | ✅ | Dediziertes Docker-Netzwerk wird verwendet. |
+| DEP-15 | ⬜ | Regelmäßiger CVE-Scan (z.B. `docker scout`/`trivy`) ist noch nicht als Prozess verankert. |
 
 ---
 
-# 4. Nicht-funktionale Anforderungen (Kurzübersicht)
-
-> Details siehe [design-rules.md](design-rules.md) und [coding-rules.md](coding-rules.md).
+## 4. Nicht-funktionale Anforderungen (Kurz)
 
 | ID | Anforderung |
 |---|---|
-| NF-01 | Plattformkompatibilität: Linux mit Docker (Produktion), Windows nativ ohne Docker (Entwicklung) – ohne Code-Anpassung lauffähig. |
-| NF-02 | Code-Qualität: PEP 8, Type Hints, Docstrings, `ruff`/`black` als Formatter. |
-| NF-03 | Testbarkeit: Hardware-Zugriff (USB) ist abstrahiert und mockbar. |
-| NF-04 | Erweiterbarkeit: Neue Funkgeräte werden ausschließlich über YAML-Dateien hinzugefügt. |
-| NF-05 | Sicherheit: Keine Secrets in Quellcode oder Logs. |
+| NF-01 | Plattformkompatibilität: Linux (Docker), Windows (nativ), ohne Codeanpassung lauffähig. |
+| NF-02 | Code-Qualität: PEP 8, Type Hints, klare Modulgrenzen, testbarer Aufbau. |
+| NF-03 | Testbarkeit: Hardware-Zugriff ist abstrahiert und mockbar. |
+| NF-04 | Erweiterbarkeit: Neue Funkgeräte primär über YAML-Dateien integrierbar. |
+| NF-05 | Sicherheit: Keine Secrets in Sourcecode/Logs/API-Responses im Klartext. |

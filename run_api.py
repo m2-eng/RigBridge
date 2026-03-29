@@ -6,6 +6,8 @@ Startet den FastAPI-Server anhand der config.json Konfiguration.
 """
 
 import sys
+import argparse
+import cProfile
 from pathlib import Path
 
 # Add src to path
@@ -15,7 +17,35 @@ from src.backend.config import RigBridgeLogger, ConfigManager
 from src.backend.api import create_app
 
 
-def main():
+def _run_server(app, config, logger) -> int:
+    """Startet den Uvicorn-Server und gibt einen Exit-Code zurück."""
+    try:
+        import uvicorn
+        uvicorn.run(
+            app,
+            host=config.api.host,
+            port=config.api.port,
+            reload=False,
+            workers=1,
+            log_config=None,  # Verwende vorkonfigurierte Logger, nicht uvicorn defaults
+        )
+    except ImportError:
+        logger.error('uvicorn nicht installiert!')
+        logger.error('Installiere mit: pip install uvicorn')
+        return 1
+    except KeyboardInterrupt:
+        logger.info('Server heruntergefahren')
+        return 0
+    except Exception as e:
+        logger.error(f'Fehler beim Server-Start: {e}')
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    return 0
+
+
+def main(profile_enabled: bool = False, profile_output: str = 'profile.out'):
     """Starte den API-Server basierend auf config.json."""
     config_file = Path('config.json')
 
@@ -50,29 +80,32 @@ def main():
     logger.info(f"Swagger UI: http://{config.api.host}:{config.api.port}/api/docs")
     logger.info(f"ReDoc: http://{config.api.host}:{config.api.port}/api/redoc")
 
+    if not profile_enabled:
+        return _run_server(app, config, logger)
+
+    profiler = cProfile.Profile()
+    logger.info(f'cProfile aktiviert, Ausgabe nach: {profile_output}')
     try:
-        import uvicorn
-        uvicorn.run(
-            app,
-            host=config.api.host,
-            port=config.api.port,
-            reload=False,
-            workers=1,
-            log_config=None,  # Verwende vorkonfigurierte Logger, nicht uvicorn defaults
-        )
-    except ImportError:
-        logger.error("uvicorn nicht installiert!")
-        logger.error("Installiere mit: pip install uvicorn")
-        return 1
-    except KeyboardInterrupt:
-        logger.info("Server heruntergefahren")
-        return 0
-    except Exception as e:
-        logger.error(f"Fehler beim Server-Start: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
+        profiler.enable()
+        return _run_server(app, config, logger)
+    finally:
+        profiler.disable()
+        profiler.dump_stats(profile_output)
+        logger.info(f'cProfile-Daten geschrieben: {profile_output}')
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description='Startet die RigBridge API')
+    parser.add_argument(
+        '--profile',
+        action='store_true',
+        help='Aktiviert cProfile fuer den API-Prozess',
+    )
+    parser.add_argument(
+        '--profile-output',
+        default='profile.out',
+        help='Ausgabedatei fuer cProfile-Stats (Standard: profile.out)',
+    )
+    args = parser.parse_args()
+
+    sys.exit(main(profile_enabled=args.profile, profile_output=args.profile_output))

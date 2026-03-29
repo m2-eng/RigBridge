@@ -67,6 +67,7 @@ class WavelogConfig:
     api_url: str = 'https://api.wavelog.local'
     api_key_or_secret_ref: str = ''
     polling_interval: int = 5
+    logbook_update_interval: int = 2
     radio_name: str = 'ICOM IC-905'
     station_id: Optional[str] = None
     wavelog_gate_http_base: str = 'http://localhost:54321'
