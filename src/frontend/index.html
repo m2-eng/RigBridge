@@ -42,6 +42,7 @@
       <button class="nav-tab active" data-tab="usb">Gerät &amp; Verbindung</button>
       <button class="nav-tab" data-tab="api">API-Server</button>
       <button class="nav-tab" data-tab="wavelog">Wavelog-Integration</button>
+      <button class="nav-tab" data-tab="audio">Audio-Streaming</button>
       <button class="nav-tab" data-tab="info">Informationen</button>
       <button class="nav-tab" data-tab="license">Lizenz</button>
     </nav>
@@ -290,6 +291,155 @@
         </form>
       </div>
 
+      <!-- Audio Streaming Tab -->
+      <div id="audio-tab" class="tab-content">
+        <h2>Audio-Streaming (IC-905 USB-Audio)</h2>
+        <p>Konfiguriere die USB-Audio-Schnittstellen des IC-905 für bidirektionales Audio-Streaming über die WebSocket-API.</p>
+
+        <!-- Audio Status -->
+        <div id="audio-status-box" class="info-box" style="margin-bottom: 1rem;">
+          <p><strong>RX-Stream (IC-905 → Netzwerk):</strong> <span id="audio-rx-status" class="status-badge status-disconnected">⚫ Inaktiv</span></p>
+          <p><strong>TX-Stream (Netzwerk → IC-905):</strong> <span id="audio-tx-status" class="status-badge status-disconnected">⚫ Inaktiv</span></p>
+          <p><strong>Verbundene RX-Clients:</strong> <span id="audio-rx-clients">0</span></p>
+          <p id="audio-error-line" class="error" style="display:none;"></p>
+          <div style="margin-top: 0.5rem;">
+            <button type="button" id="audio-start-btn" class="btn-secondary">▶ Streams starten</button>
+            <button type="button" id="audio-stop-btn" class="btn-secondary">■ Streams stoppen</button>
+            <button type="button" id="audio-status-refresh-btn" class="btn-secondary">🔄 Status</button>
+          </div>
+        </div>
+
+        <div id="audio-unavailable-notice" class="info-box" style="display:none; color: var(--color-warning, #b8860b);">
+          <p>⚠️ <strong>sounddevice nicht verfügbar.</strong> Das Python-Paket <code>sounddevice</code> (+ <code>libportaudio2</code>) muss im Container installiert sein. Audio-Streaming ist deaktiviert.</p>
+        </div>
+
+        <form id="audio-form" class="config-form">
+          <div class="form-group form-checkbox">
+            <label>
+              <input type="checkbox" id="audio-enabled" name="enabled">
+              Audio-Streaming aktivieren
+            </label>
+            <small>Aktiviert RX/TX-Stream beim nächsten App-Start automatisch.</small>
+          </div>
+
+          <div id="audio-config-section">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="audio-capture-device">RX-Gerät (IC-905 → Netzwerk):</label>
+                <select id="audio-capture-device" name="capture_device">
+                  <option value="">-- Geräte laden... --</option>
+                </select>
+                <small>Capture-Gerät: Empfangsaudio des IC-905 (Mikrofon-Quelle am Host)</small>
+              </div>
+
+              <div class="form-group">
+                <label for="audio-playback-device">TX-Gerät (Netzwerk → IC-905):</label>
+                <select id="audio-playback-device" name="playback_device">
+                  <option value="">-- Geräte laden... --</option>
+                </select>
+                <small>Playback-Gerät: TX-Eingang des IC-905 (Lautsprecher-Ausgang am Host)</small>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="audio-samplerate">Samplerate:</label>
+                <select id="audio-samplerate" name="sample_rate">
+                  <option value="8000">8.000 Hz (Schmalband)</option>
+                  <option value="16000">16.000 Hz (Breitband)</option>
+                  <option value="48000" selected>48.000 Hz (Standard IC-905)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="audio-format">PCM-Format:</label>
+                <select id="audio-format" name="format">
+                  <option value="S16_LE" selected>S16_LE (16-Bit, Little Endian)</option>
+                  <option value="S32_LE">S32_LE (32-Bit, Little Endian)</option>
+                  <option value="F32_LE">F32_LE (32-Bit Float)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="audio-codec">Codec:</label>
+                <select id="audio-codec" name="codec">
+                  <option value="pcm" selected>PCM (unkomprimiert)</option>
+                  <option value="opus" disabled>Opus (noch nicht verfügbar)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 0.5rem;">
+              <button type="button" id="audio-refresh-devices-btn" class="btn-secondary">🔄 Geräteliste aktualisieren</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary">Speichern</button>
+          <span id="audio-message" class="form-message"></span>
+        </form>
+
+        <hr class="section-divider">
+        <h3>🎧 RX Audio-Test (Liveempfang im Browser)</h3>
+        <div class="info-box" id="audio-rx-player-box">
+          <p>Verbindet den Browser direkt mit dem IC-905 RX-Audio-Stream zur Live-Kontrolle. Der RX-Stream wird beim Klick automatisch gestartet.</p>
+          <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+            <button type="button" id="audio-rx-play-btn" class="btn-primary">▶ Hören starten</button>
+            <span id="audio-rx-player-status" class="status-badge status-disconnected">⚫ Inaktiv</span>
+            <span id="audio-rx-player-info" style="color:var(--color-text-muted,#888); font-size:0.85rem;"></span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+            <label for="audio-rx-volume" style="white-space:nowrap;">🔊 Lautstärke:</label>
+            <input type="range" id="audio-rx-volume" min="0" max="2" step="0.05" value="1" style="width:160px;">
+            <span id="audio-rx-volume-label">100%</span>
+          </div>
+          <div>
+            <canvas id="audio-rx-vu-meter" width="400" height="24"
+              style="border-radius:4px; background:var(--color-bg-secondary,#1a1a2e); width:100%; max-width:400px; display:block;"></canvas>
+          </div>
+          <p id="audio-rx-player-error" class="error" style="display:none; margin-top:0.5rem;"></p>
+        </div>
+
+        <hr class="section-divider">
+        <h3>🎙️ TX Audio-Test (Browser-Mikrofon → IC-905)</h3>
+        <div class="info-box" id="audio-tx-sender-box">
+          <p>Sendet Audio vom Browser-Mikrofon (oder einer anderen lokalen Audioquelle) direkt an den IC-905 TX-Eingang. Die Audioquelle wird auf dem Gerät ausgewählt, auf dem der Browser läuft – nicht auf dem Container-Rechner.</p>
+
+          <!-- Audioquellen-Auswahl -->
+          <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+            <label for="audio-tx-source" style="white-space:nowrap;">🎙️ Audioquelle:</label>
+            <select id="audio-tx-source" style="flex:1; min-width:200px; max-width:420px;">
+              <option value="">-- Geräte werden geladen... --</option>
+            </select>
+            <button type="button" id="audio-tx-refresh-sources-btn" class="btn-secondary" title="Geräteliste aktualisieren">🔄</button>
+          </div>
+
+          <!-- PTT-Steuerung -->
+          <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+            <button type="button" id="audio-tx-ptt-btn" class="btn-primary">🔴 PTT Senden starten</button>
+            <span id="audio-tx-sender-status" class="status-badge status-disconnected">⚫ Inaktiv</span>
+            <span id="audio-tx-sender-info" style="color:var(--color-text-muted,#888); font-size:0.85rem;"></span>
+          </div>
+
+          <!-- VU-Meter für Mikrofon -->
+          <div>
+            <canvas id="audio-tx-vu-meter" width="400" height="24"
+              style="border-radius:4px; background:var(--color-bg-secondary,#1a1a2e); width:100%; max-width:400px; display:block;"></canvas>
+          </div>
+          <p id="audio-tx-sender-error" class="error" style="display:none; margin-top:0.5rem;"></p>
+          <p style="margin-top:0.5rem; font-size:0.82rem; color:var(--color-text-muted,#888);">
+            ⚠️ Der Browser fordert Mikrofonberechtigung an. Auf HTTPS-Verbindungen wird dies von modernen Browsern erzwungen. Auf HTTP (localhost / 127.0.0.1) ist es meist trotzdem erlaubt.
+          </p>
+        </div>
+
+        <hr class="section-divider">
+        <h3>WebSocket-API</h3>
+        <div class="info-box">
+          <p><strong>RX (Empfang lesen):</strong> <code id="audio-ws-rx-url">ws://…/api/audio/rx</code></p>
+          <p><strong>TX (Senden einspeisen):</strong> <code id="audio-ws-tx-url">ws://…/api/audio/tx</code></p>
+          <p><small>PCM-Audio wird als Binär-Frames über WebSocket übertragen. Format und Samplerate gemäß obiger Konfiguration.</small></p>
+        </div>
+      </div>
+
       <!-- License Tab -->
       <div id="license-tab" class="tab-content">
         <h2>Lizenz</h2>
@@ -334,6 +484,7 @@
   <script src="/assets/config-manager.js"></script>
   <script src="/assets/status-widget.js"></script>
   <script src="/assets/theme-switcher.js"></script>
+  <script src="/assets/audio-manager.js"></script>
   <script src="/assets/app.js"></script>
 </body>
 </html>

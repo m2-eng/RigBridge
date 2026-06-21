@@ -302,6 +302,7 @@ class ConfigResponse(BaseModel):
     wavelog: Dict[str, Any] = Field(description='Wavelog-Konfiguration')
     secret_provider: Dict[str, Any] = Field(description='Secret-Provider-Konfiguration')
     device: Dict[str, Any] = Field(description='Geräte-Konfiguration')
+    audio: Dict[str, Any] = Field(description='Audio-Streaming-Konfiguration')
     runtime: Dict[str, Any] = Field(description='Laufzeitinformationen für UI-Verhalten')
 
 
@@ -385,12 +386,22 @@ class DeviceConfigUpdate(BaseModel):
     radio_address: Optional[int] = None
 
 
+class AudioConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    capture_device: Optional[str] = None
+    playback_device: Optional[str] = None
+    sample_rate: Optional[int] = None
+    format: Optional[str] = None
+    codec: Optional[str] = None
+
+
 class ConfigUpdateRequest(BaseModel):
     usb: Optional[USBConfigUpdate] = None
     api: Optional[APIConfigUpdate] = None
     wavelog: Optional[WavelogConfigUpdate] = None
     secret_provider: Optional[SecretProviderConfigUpdate] = None
     device: Optional[DeviceConfigUpdate] = None
+    audio: Optional[AudioConfigUpdate] = None
 
 
 def _parse_yaml_int(value: Any, fallback: int) -> int:
@@ -900,6 +911,7 @@ def create_router() -> APIRouter:
             'wavelog': asdict(config.wavelog),
             'secret_provider': asdict(config.secret_provider),
             'device': asdict(config.device),
+            'audio': asdict(config.audio),
             'runtime': {
                 'is_container': running_in_container,
                 'api_port_editable': not running_in_container,
@@ -1027,6 +1039,11 @@ def create_router() -> APIRouter:
             # ProtocolManager muss nach Geräte-/Adressänderung neu aufgebaut werden.
             _global_protocol_manager = None
             logger.debug('ProtocolManager invalidiert (Device-Config aktualisiert)')
+
+        if 'audio' in payload:
+            for key, value in payload['audio'].items():
+                setattr(config.audio, key, value)
+            logger.debug('Audio-Konfiguration aktualisiert')
 
         # Host ist global fixiert; im Container bleibt der Port unveränderlich auf Standard.
         config.api.host = API_HOST_FIXED

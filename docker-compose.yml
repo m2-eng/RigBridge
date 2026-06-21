@@ -39,10 +39,16 @@ services:
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
       - /dev/ttyACM1:/dev/ttyACM1
+      # IC-905 USB-Audio (ALSA PCM-Geraete)
+      # Capture (RX: IC-905 → Host-Mikrofon) und Playback (TX: Host → IC-905)
+      - /dev/snd/pcmC0D0c:/dev/snd/pcmC0D0c
+      - /dev/snd/pcmC0D0p:/dev/snd/pcmC0D0p
+      - /dev/snd/controlC0:/dev/snd/controlC0
 
-    # Gruppenzugehoerigkeit fuer USB/Serial-Zugriff (dialout GID 20)
+    # Gruppenzugehoerigkeit fuer USB/Serial-Zugriff (dialout GID 20) und Audio (GID 29)
     group_add:
       - "20"  # dialout
+      - "29"  # audio
 
     # ────────────────────────────────────────────────────────────────
     # Sicherheitshaertung
@@ -66,13 +72,13 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 256M
+          memory: 512M
         reservations:
           cpus: '0.10'
-          memory: 64M
+          memory: 128M
 
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request, ssl; urllib.request.urlopen('https://localhost:8080/health', context=ssl._create_unverified_context())"]
       interval: 30s
       timeout: 5s
       retries: 3

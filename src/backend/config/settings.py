@@ -84,6 +84,17 @@ class SecretProviderConfig:
 
 
 @dataclass
+class AudioConfig:
+    """Audio-Streaming-Konfiguration (IC-905 USB-Audio)."""
+    enabled: bool = False
+    capture_device: str = ''    # sounddevice Index oder Gerätename (RX: IC-905 → Host)
+    playback_device: str = ''   # sounddevice Index oder Gerätename (TX: Host → IC-905)
+    sample_rate: int = 48000    # Hz: 8000, 16000, 48000
+    format: str = 'S16_LE'     # PCM-Format: S16_LE, S32_LE, F32_LE
+    codec: str = 'pcm'          # pcm | opus (future)
+
+
+@dataclass
 class DeviceConfig:
     """Geräte-Konfiguration."""
     name: str = 'Icom IC-905'
@@ -113,6 +124,7 @@ class RigBridgeConfig:
     wavelog: WavelogConfig = field(default_factory=WavelogConfig)
     secret_provider: SecretProviderConfig = field(default_factory=SecretProviderConfig)
     device: DeviceConfig = field(default_factory=DeviceConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
     config_file: Optional[Path] = None
 
     def save(self, path: Optional[Path] = None) -> None:
@@ -142,6 +154,7 @@ class RigBridgeConfig:
             'wavelog': asdict(self.wavelog),
             'secret_provider': asdict(self.secret_provider),
             'device': device_dict,
+            'audio': asdict(self.audio),
         }
 
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -179,6 +192,8 @@ class RigBridgeConfig:
                 addr = device_data['radio_address']
                 device_data['radio_address'] = int(addr, 16) if isinstance(addr, str) else addr
             config.device = DeviceConfig(**device_data)
+        if 'audio' in data:
+            config.audio = AudioConfig(**data['audio'])
 
         return config
 

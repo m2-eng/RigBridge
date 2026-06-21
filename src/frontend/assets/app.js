@@ -39,6 +39,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Event-Listener für Formulare
   setupFormHandlers();
 
+  // Audio-Handler
+  setupAudioHandlers();
+
   // Tab-Navigation
   setupTabNavigation();
 
@@ -101,7 +104,17 @@ function setupTabNavigation() {
         if (tabName === 'license') {
           await loadLicenseContent();
         }
-        
+
+        // Audio-Tab: Geräte laden und Status anzeigen
+        if (tabName === 'audio') {
+          await loadAudioDevices();
+          try {
+            const config = configManager.getConfig();
+            if (config.audio) populateAudioForm(config.audio);
+          } catch (_) {}
+          await refreshAudioStatus();
+        }
+
       } else {
         console.warn(`Tab content not found: ${tabId}`);
       }
@@ -181,7 +194,7 @@ async function loadCommandsList() {
 
     const data = await response.json();
     allCommands = data.commands || [];
-    
+
     displayCommands(allCommands);
     commandsContainer.dataset.loaded = 'true';
 
@@ -198,43 +211,43 @@ async function loadCommandsList() {
 function displayCommands(commands) {
   const commandsContainer = document.getElementById('commands-container');
   const commandsCount = document.getElementById('commands-count');
-  
+
   if (!commandsContainer) return;
-  
+
   if (commands.length === 0) {
     commandsContainer.innerHTML = '<p class="info-message">Keine Befehle gefunden.</p>';
     if (commandsCount) commandsCount.textContent = '0 Befehle gefunden';
     return;
   }
-  
+
   // Aktualisiere Anzahl
   if (commandsCount) {
     commandsCount.textContent = `${commands.length} Befehl${commands.length !== 1 ? 'e' : ''} gefunden`;
   }
-  
+
   // Erstelle Container für zwei-spaltige Befehle
   const commandsList = document.createElement('div');
   commandsList.className = 'commands-list';
-  
+
   commands.forEach(command => {
     const item = document.createElement('div');
     item.className = 'command-item';
-    
+
     // Command name (left column, 25%)
     const nameCol = document.createElement('span');
     nameCol.className = 'command-name';
     nameCol.textContent = command.name;
-    
+
     // Command description (right column, 75%)
     const descCol = document.createElement('span');
     descCol.className = 'command-description';
     descCol.textContent = command.description;
-    
+
     item.appendChild(nameCol);
     item.appendChild(descCol);
     commandsList.appendChild(item);
   });
-  
+
   commandsContainer.innerHTML = '';
   commandsContainer.appendChild(commandsList);
 }
@@ -242,13 +255,13 @@ function displayCommands(commands) {
 function filterCommands() {
   const searchInput = document.getElementById('commands-search');
   if (!searchInput) return;
-  
+
   const searchTerm = searchInput.value.toLowerCase().trim();
-  
+
   if (searchTerm === '') {
     displayCommands(allCommands);
   } else {
-    const filtered = allCommands.filter(cmd => 
+    const filtered = allCommands.filter(cmd =>
       cmd.name.toLowerCase().includes(searchTerm) ||
       cmd.description.toLowerCase().includes(searchTerm)
     );
@@ -259,11 +272,11 @@ function filterCommands() {
 function setupCommandsHandlers() {
   const searchInput = document.getElementById('commands-search');
   const refreshBtn = document.getElementById('commands-refresh-btn');
-  
+
   if (searchInput) {
     searchInput.addEventListener('input', filterCommands);
   }
-  
+
   if (refreshBtn) {
     refreshBtn.addEventListener('click', async () => {
       const commandsContainer = document.getElementById('commands-container');
@@ -317,7 +330,7 @@ async function populateFormFields() {
       if (controllerAddr) {
         controllerAddr.value = formatAddressHex(config.device.controller_address, 224);
       }
-      
+
       const radioAddr = document.getElementById('device-radio-address');
       if (radioAddr) {
         radioAddr.value = formatAddressHex(config.device.radio_address, 164);
@@ -360,6 +373,12 @@ async function populateFormFields() {
       toggleWavelogConfig(config.wavelog.enabled);
 
       console.info('Wavelog form populated');
+    }
+
+    // Audio-Form
+    if (config.audio) {
+      populateAudioForm(config.audio);
+      console.info('Audio form populated');
     }
 
     // Info-Tab
@@ -673,18 +692,18 @@ async function submitDeviceConfig() {
       manufacturer: selectedDevice.manufacturer,
       protocol_file: selectedDevice.protocol_file,
     };
-    
+
     // Adressen aus den Eingabefeldern hinzufügen
     const controllerAddr = document.getElementById('device-controller-address');
     const radioAddr = document.getElementById('device-radio-address');
-    
+
     if (controllerAddr) {
       deviceData.controller_address = parseAddressInput(controllerAddr.value);
     }
     if (radioAddr) {
       deviceData.radio_address = parseAddressInput(radioAddr.value);
     }
-    
+
     await configManager.saveSection('device', deviceData);
 
     // Lade die Konfiguration neu, um die vom Backend geänderten Werte zu synchronisieren

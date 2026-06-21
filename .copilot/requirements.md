@@ -30,6 +30,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 2. Bereitstellung einer **REST-API** für Frontend und externe Integrationen.
 3. Bereitstellung einer **Wavelog-CAT-Integration** (HTTP-basiert, inkl. Polling und manueller Trigger).
 4. Bereitstellung einer **Browser-Oberfläche** zur Konfiguration und Diagnose.
+5. Bereitstellung eines **bidirektionalen Audio-Streamings** über WebSocket: RX-Audio (IC-905 → Netzwerk-Client) und TX-Audio (Netzwerk-Client → IC-905-Mikrofon). Dies ermöglicht z.B. das Einspeisen von Audio aus einem Live-Stream in das Funkgerät.
 
 ---
 
@@ -40,6 +41,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | **Benutzer** | Bedient die Browser-Oberfläche zur Konfiguration |
 | **Wavelog** | Externe Software, die CAT-Daten konsumiert |
 | **Funkgerät** | Hardware (z.B. ICOM IC-7300/IC-905), die über USB/Serial angebunden ist |
+| **Audio-Client** | Externe Software/Skript (z.B. YouTube-Stream-Relay), die über WebSocket-Audio-APIs Audio ein- oder ausgibt |
 
 ---
 
@@ -68,6 +70,13 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | UI-17 | ✅ | UI zeigt verfügbare YAML-Kommandos inkl. Suche und Refresh (`/api/commands`). |
 | UI-18 | ✅ | UI bietet einen Log-Bereich mit Filter/Limit und Abruf über API (`/api/logs`). |
 | UI-19 | ⬜ | Wavelog-API-Key wird im UI als Passwortfeld (`type="password"`) dargestellt. |
+| UI-20 | ✅ | Einstellungsseite für Audio: Capture-Gerät (IC-905 RX) und Playback-Gerät (IC-905 TX) sind per Dropdown auswählbar; Geräteliste wird dynamisch von `/api/audio/devices` bezogen. |
+| UI-21 | ✅ | Audio-Einstellungsseite zeigt konfigurierbare Parameter: Samplerate (Dropdown: 8000 / 16000 / 48000 Hz), PCM-Format (Dropdown: S16_LE / S32_LE) und optionalen Codec (PCM / Opus). |
+| UI-22 | ✅ | Audio-Einstellungsseite zeigt den aktuellen Stream-Status (RX aktiv/inaktiv, TX aktiv/inaktiv, Fehler) via `/api/audio/status`, abrufbar per manuellem Refresh. |
+| UI-23 | ✅ | Audio-Streaming kann auf der Einstellungsseite manuell gestartet und gestoppt werden (Start-/Stop-Button, Zustand wird sofort im Status reflektiert). |
+| UI-24 | ⬜ | Audio-Einstellungsseite ist deaktiviert/ausgeblendet, wenn `audio.enabled: false` in der Config gesetzt ist oder kein ALSA-Gerät erkannt wurde. |
+| UI-25 | ✅ | Browser-integrierter **RX-Audio-Player** (Web Audio API): Liveempfang des IC-905 direkt im Browser via WebSocket `/api/audio/rx`. Der Server-RX-Stream wird beim Verbinden automatisch gestartet. Funktionen: Lautstärkeregler, VU-Meter (Canvas), Timeout-Erkennung bei ausbleibendem Audio, Statusanzeige mit Samplerate/Format. |
+| UI-26 | ✅ | Browser-integrierter **TX-Audio-Sender** (PTT via Browser-Mikrofon): Sendet Audio vom Browser-Mikrofon an den IC-905 TX-Eingang via WebSocket `/api/audio/tx`. Audioquelle (Mikrofon) ist per Dropdown aus der Browser-`MediaDevices`-API auswählbar (läuft auf dem Client-Rechner, nicht dem Container). Funktionen: PTT-Button (Toggle), VU-Meter, PCM-Konvertierung Float32→Int16, Fehleranzeige bei TX-Kanal belegt. |
 
 ### 3.2 Application Layer
 
@@ -94,6 +103,14 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | API-17 | ✅ | `GET /api/devices` scannt verfügbare Geräteprotokolle. |
 | API-18 | ✅ | `GET /api/logs` liefert In-Memory-Logs (Limit/Level/Sortierung). |
 | API-19 | ✅ | CAT-Steuerendpunkte sind vorhanden: `/api/cat/start`, `/api/cat/stop`, `/api/cat/status`, `/api/cat/send-now`. |
+| API-20 | ✅ | `GET /api/audio/devices` listet alle verfügbaren ALSA-Audio-Geräte des Systems (Name, Karte, Gerät-Index, Typ: Capture/Playback/Both). |
+| API-21 | ✅ | `GET /api/audio/status` liefert Status der Audio-Streams (aktiv/inaktiv, aktuell konfiguriertes Capture-/Playback-Gerät, Samplerate, Format, Fehlertext falls vorhanden). |
+| API-22 | ✅ | `GET /api/audio/config` liefert die gespeicherte Audio-Konfiguration (Capture-Gerät, Playback-Gerät, Samplerate, Format, Codec, enabled-Flag). |
+| API-25 | ✅ | `PUT /api/audio/config` speichert Audio-Konfiguration persistent via `PUT /api/config` (audio-Sektion): Capture-Gerät, Playback-Gerät, Samplerate, Format, Codec und `enabled`-Flag. |
+| API-26 | ✅ | `POST /api/audio/start` startet die Audio-Streams (RX-Capture und TX-Playback) mit der gespeicherten Konfiguration. |
+| API-27 | ✅ | `POST /api/audio/stop` stoppt alle laufenden Audio-Streams. |
+| API-23 | ✅ | `WS /api/audio/rx` streamt empfangenes IC-905-RX-Audio (Empfangsaudio des Funkgeräts) kontinuierlich zum WebSocket-Client. |
+| API-24 | ✅ | `WS /api/audio/tx` empfängt Audio-Daten vom WebSocket-Client und gibt sie auf den TX-Eingang des IC-905 aus (Mikrofon des Funkgeräts). |
 
 #### 3.2.2 Wavelog Integration (CAT)
 
@@ -212,9 +229,32 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | USB-10 | ✅ | `_continuous_reader()` als Background-Task ist implementiert. |
 | USB-11 | ✏️ | Blockierende Serial-Reads werden im Reader via `run_in_executor` in Threadpool ausgelagert (statt `asyncio.to_thread`). |
 
-### 3.5 Allgemeine Anforderungen
+### 3.5 Audio-Streaming Layer
 
-#### 3.5.1 Konfiguration
+> Das IC-905 stellt über USB zwei ALSA-Audio-Geräte bereit:
+> - **Capture** (`pcmC0D0c`): RX-Audio des Funkgeräts (Empfang) → erscheint am Host als Mikrofon
+> - **Playback** (`pcmC0D0p`): TX-Audio zum Funkgerät (Senden) → erscheint am Host als Lautsprecher/Ausgabe
+
+| ID | Status | Anforderung |
+|---|---|---|
+| AUD-01 | ✅ | ALSA-Capture-Gerät (IC-905 RX) und ALSA-Playback-Gerät (IC-905 TX) sind über `config.json` konfigurierbar (z.B. `hw:0,0`). |
+| AUD-02 | ✅ | Samplerate (z.B. 8000, 16000, 48000 Hz) und PCM-Format (z.B. S16_LE) sind konfigurierbar. |
+| AUD-03 | ✅ | RX-Audio-Stream (IC-905 → Client) wird über WebSocket (`/api/audio/rx`) als kontinuierlicher Byte-Stream übertragen. |
+| AUD-04 | ✅ | TX-Audio-Stream (Client → IC-905) wird über WebSocket (`/api/audio/tx`) empfangen und auf das ALSA-Playback-Gerät ausgegeben. |
+| AUD-05 | ✅ | Audio-Streaming ist vollständig unabhängig von der CI-V-Kommunikation und läuft in einem eigenen Modul (`src/backend/audio/`). |
+| AUD-06 | ✅ | Mehrere gleichzeitige RX-Clients werden unterstützt (Broadcast vom selben Capture-Stream). |
+| AUD-07 | ✅ | Verbindungsabbruch eines RX-Clients unterbricht nicht den Stream für andere verbundene Clients. |
+| AUD-08 | ✅ | Audio-Streaming kann über API gestartet und gestoppt werden; der Zustand wird in `/api/audio/status` abgebildet. |
+| AUD-09 | 🔄 | Rohes PCM ist der Mindest-Codec; Opus-Komprimierung ist optional vorbereitet (für niedrige Bandbreite im Netzwerk). |
+| AUD-10 | ✅ | Fehler im Audio-Subsystem (Gerät nicht vorhanden, Zugriff verweigert, Pufferunterlauf) werden geloggt und führen nicht zum Absturz der Gesamtanwendung. |
+| AUD-11 | ✅ | Das Audio-Modul ist optional: Fehlt das ALSA-Gerät oder ist `audio.enabled: false` in der Config, startet die Anwendung ohne Audio-Funktion. |
+| AUD-12 | ✅ | Gleichzeitiger TX-Betrieb (mehrere Clients senden gleichzeitig) wird verhindert oder serialisiert (nur ein aktiver TX-Sender). |
+| AUD-13 | ✅ | WebSocket `/api/audio/rx` startet den Server-seitigen RX-Stream automatisch beim ersten Client-Connect (kein vorheriger `POST /api/audio/start` notwendig). Schlägt der Start fehl, wird eine JSON-Fehlermeldung gesendet und die Verbindung geschlossen. |
+| AUD-14 | ✅ | WebSocket `/api/audio/rx` sendet beim Verbinden eine JSON-Status-Nachricht `{"status":"connected", "sample_rate":…, "format":"…"}` an den Client, bevor Binärdaten folgen. |
+
+### 3.6 Allgemeine Anforderungen
+
+#### 3.6.1 Konfiguration
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -227,7 +267,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | CFG-07 | ✅ | Konfigurationsdatei ist sowohl durch Anwendung als auch Benutzer änderbar. |
 | CFG-08 | ✅ | Konfigurationsinhalte sind über UI sichtbar und editierbar (mit Laufzeitrestriktionen). |
 
-#### 3.5.2 Sicherheit und TLS
+#### 3.6.2 Sicherheit und TLS
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -235,11 +275,11 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | SEC-02 | ✅ | Secrets werden nicht im Log im Klartext ausgegeben. |
 | SEC-03 | ⬜ | Verbindung RigBridge -> Wavelog wird ausschließlich über HTTPS erzwungen. |
 | SEC-04 | ✏️ | API-Host ist im Backend fest auf `0.0.0.0`; tatsächliche Exponierung wird über Docker-Port-Binding (`127.0.0.1:...`) begrenzt. |
-| SEC-05 | 🔄 | HTTPS-Option für interne REST-API ist in Config/UI vorhanden, aber Serverstart mit TLS-Zertifikaten ist noch nicht vollständig verschaltet. |
+| SEC-05 | ✅ | HTTPS ist standardmäßig aktiviert (`enable_https: true`). Wenn kein `cert_file`/`key_file` angegeben, wird beim Start automatisch ein selbst-signiertes Zertifikat erzeugt (`/tmp/rigbridge-ssl.crt`). Eigene Zertifikate können über `cert_file`/`key_file` in `config.json` konfiguriert werden. |
 | SEC-06 | ⬜ | Wenn HTTPS aktiv ist, muss Zertifikatsvalidierung durchgängig sichergestellt sein (kein unsicherer Fallback). |
 | SEC-07 | ⬜ | Wavelog-API-Key-Feld im UI als Passwortfeld (`type="password"`). |
 
-#### 3.5.3 Logging
+#### 3.6.3 Logging
 
 | ID | Status | Anforderung |
 |---|---|---|
@@ -250,7 +290,7 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | LOG-05 | ✅ | Einheitliches Log-Format wird inkl. Uvicorn-Loggern angewendet. |
 | LOG-06 | ✅ | Zeitstempel enthalten Millisekunden. |
 
-#### 3.5.4 Deployment / Docker
+#### 3.6.4 Deployment / Docker
 
 > Docker gilt für Linux. Auf Windows ist der primäre Weg der native Start.
 
@@ -271,6 +311,12 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | DEP-13 | ✅ | Ressourcenlimits für CPU/RAM sind in Compose definiert. |
 | DEP-14 | ✅ | Dediziertes Docker-Netzwerk wird verwendet. |
 | DEP-15 | ⬜ | Regelmäßiger CVE-Scan (z.B. `docker scout`/`trivy`) ist noch nicht als Prozess verankert. |
+| DEP-16 | ✅ | ALSA-PCM-Geräte des IC-905 (`/dev/snd/pcmC0D0c`, `/dev/snd/pcmC0D0p`) werden als `devices` in den Container durchgereicht. |
+| DEP-17 | ✅ | Container ist Mitglied der `audio`-Gruppe (GID 29) via `group_add`, damit `appuser` auf `/dev/snd/*` zugreifen darf. |
+| DEP-18 | ✅ | Speicher-Limit wird für Audio-Streaming-Betrieb auf ≥ 512 MB angehoben (Audio-Puffer + optionales Encoding). |
+| DEP-19 | ✅ | Audio-Gerät-Passthrough ist in `docker-compose.yml` dokumentiert und aktiv konfiguriert. |
+| DEP-20 | ✅ | Test-Skripte `docker/test-start.sh` / `docker/test-stop.sh` + `docker-compose.test.yml` ermöglichen Hardware-Tests mit aktuellem Code, ohne den produktiven `rigbridge`-Container zu verändern. |
+| DEP-21 | ✅ | `numpy` ist in `requirements.txt` enthalten (benötigt von `audio_manager.py` für PCM-Puffer-Konvertierung). |
 
 ---
 
@@ -283,3 +329,5 @@ RigBridge ist eine **Browser-Applikation**, die folgende Kernaufgaben erfüllt:
 | NF-03 | Testbarkeit: Hardware-Zugriff ist abstrahiert und mockbar. |
 | NF-04 | Erweiterbarkeit: Neue Funkgeräte primär über YAML-Dateien integrierbar. |
 | NF-05 | Sicherheit: Keine Secrets in Sourcecode/Logs/API-Responses im Klartext. |
+| NF-06 | Audio-Latenz: RX-Streaming-Latenz soll im LAN ≤ 500 ms betragen (Netzwerkjitter-unabhängig). |
+| NF-07 | Test-Isolation: Test-Container (`rigbridge-test`) darf niemals den produktiven `rigbridge`-Container oder dessen Image verändern. |

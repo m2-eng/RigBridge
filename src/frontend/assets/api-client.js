@@ -202,7 +202,43 @@ class ApiClient {
     if (data) {
       body.data = data;
     }
-    return this.request('PUT', '/command/' + commandName, body);
+    return this.request('PUT', '/rig/command', body);
+  }
+
+  // ========================================================================
+  // AUDIO ENDPOINTS
+  // ========================================================================
+
+  /**
+   * Listet verfügbare Audio-Geräte (ALSA/PortAudio).
+   * @returns {Promise<object>} {devices: [...], sounddevice_available: bool}
+   */
+  async getAudioDevices() {
+    return this.request('GET', '/audio/devices');
+  }
+
+  /**
+   * Gibt den aktuellen Audio-Stream-Status zurück.
+   * @returns {Promise<object>} AudioStatusResponse
+   */
+  async getAudioStatus() {
+    return this.request('GET', '/audio/status');
+  }
+
+  /**
+   * Startet die Audio-Streams.
+   * @returns {Promise<object>} {success, message}
+   */
+  async startAudio() {
+    return this.request('POST', '/audio/start');
+  }
+
+  /**
+   * Stoppt alle Audio-Streams.
+   * @returns {Promise<object>} {success, message}
+   */
+  async stopAudio() {
+    return this.request('POST', '/audio/stop');
   }
 }
 

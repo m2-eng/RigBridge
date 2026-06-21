@@ -426,6 +426,24 @@ class CIVCommandExecutor:
             mode_code = mode_codes.get(mode, 0x05)
             return bytes([mode_code, 0x00]), None  # mode + filter
 
+        elif command_name == 'send_transceiver_status':
+            # PTT: status=True → TX (0x01), status=False → RX (0x00)
+            status = data.get('status', False)
+            return bytes([0x01 if status else 0x00]), None
+
+        # Generischer Boolean-Fallback für Befehle mit type=boolean
+        command_def = self.parser.get_command(command_name)
+        if command_def:
+            request_fields = command_def.get('request', []) or []
+            encoded = bytearray()
+            for field in request_fields:
+                field_name = field.get('name', '')
+                field_type = field.get('type', '')
+                if field_type == 'boolean' and field_name in data:
+                    encoded.append(0x01 if data[field_name] else 0x00)
+            if encoded:
+                return bytes(encoded), None
+
         # Fallback: Serialize dict as-is (für generische Befehle)
         return b'', None
 
@@ -485,6 +503,23 @@ class CIVCommandExecutor:
                     f'{raw_response[2]:02X} {raw_response[3]:02X} '
                     f'(expected {self.parser.controller_addr:02X} {self.parser.radio_addr:02X})'
                 ),
+                raw_response=raw_response,
+            )
+
+        # CI-V Acknowledgment-Frame prüfen:
+        # 0xFB = OK (Befehl erfolgreich ausgeführt)
+        # 0xFA = NG (Befehl fehlgeschlagen / nicht unterstützt)
+        # Diese Frames kommen bei Schreibbefehlen statt einem Echo des Befehlsbytes.
+        if raw_response[4] == 0xFB:
+            return CommandResult(
+                success=True,
+                data={'status': True},
+                raw_response=raw_response,
+            )
+        if raw_response[4] == 0xFA:
+            return CommandResult(
+                success=False,
+                error='Befehl vom Gerät abgelehnt (NG)',
                 raw_response=raw_response,
             )
 
@@ -570,6 +605,22 @@ class CIVCommandExecutor:
             return {'id': payload.hex()}, None
 
         else:
+            # Einfache type-basierte Response (z.B. type: "status_ok_ng", type: "boolean")
+            # → kein encoding/size nötig, direkte Auswertung des ersten Bytes
+            if response and len(response) == 1 and 'type' in response[0] and 'encoding' not in response[0]:
+                field = response[0]
+                field_name = field.get('name', 'status')
+                field_type = field.get('type', '')
+                value = payload[0] if payload else 0x00
+
+                if field_type == 'status_ok_ng':
+                    # 0x00 = OK/FB (Erfolg), 0x01 = NG (Fehler), seltener auch 0xFB/0xFA
+                    return {field_name: value == 0x00}, None
+                elif field_type == 'boolean':
+                    return {field_name: value == 0x01}, None
+                else:
+                    return {field_name: f'0x{value:02X}'}, None
+
             # Check data length against response structure
             payload_length = len(payload)
             for item in response:
