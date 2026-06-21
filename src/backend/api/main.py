@@ -23,6 +23,7 @@ from .routes import (
     start_cat_update_task,
     stop_cat_update_task,
 )
+from ..audio.audio_routes import create_audio_router, get_audio_manager
 
 # Logger-Initialisierung
 logger = RigBridgeLogger.get_logger(__name__)
@@ -71,6 +72,13 @@ def create_app(
         except Exception as e:
             logger.error(f'Failed to start CAT update task: {e}')
 
+        # Audio-Streaming starten (wenn konfiguriert und aktiviert)
+        try:
+            asyncio.create_task(get_audio_manager().start())
+            logger.info('Audio-Manager gestartet')
+        except Exception as e:
+            logger.error(f'Failed to start Audio-Manager: {e}')
+
         yield
 
         # Shutdown: Stoppe Background-Tasks
@@ -85,6 +93,12 @@ def create_app(
             logger.info('CAT update task stopped')
         except Exception as e:
             logger.error(f'Failed to stop CAT update task: {e}')
+
+        try:
+            await get_audio_manager().stop()
+            logger.info('Audio-Manager gestoppt')
+        except Exception as e:
+            logger.error(f'Failed to stop Audio-Manager: {e}')
 
     # Konfiguration laden
     config = ConfigManager.initialize(config_path)
@@ -236,6 +250,10 @@ def create_app(
     # Router registrieren
     router = create_router()
     app.include_router(router, prefix='/api')
+
+    # Audio-Router registrieren
+    audio_router = create_audio_router()
+    app.include_router(audio_router, prefix='/api')
 
     # Statische Dateien: Frontend (nur wenn vorhanden)
     frontend_path = Path(__file__).parent.parent.parent / 'frontend'

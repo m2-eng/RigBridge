@@ -18,6 +18,11 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
+# System-Abhaengigkeiten: libportaudio2 fuer sounddevice (IC-905 USB-Audio)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libportaudio2 \
+  && rm -rf /var/lib/apt/lists/*
+
 # Installierte Pakete aus dem builder-Stage uebernehmen
 COPY --from=builder /install /usr/local
 

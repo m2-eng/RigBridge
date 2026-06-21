@@ -36,6 +36,7 @@ RigBridge bietet folgende Haupt-APIs:
 - **Modus-Endpunkte**: Dedicated APIs zum Lesen/Setzen des Betriebsmodus
 - **Meter-Endpunkte**: API zum Auslesen des S-Meters
 - **Info-Endpunkte**: Listings und Status-Informationen
+- **Audio-API**: Bidirektionales Audio-Streaming via REST + WebSocket (IC-905 USB-Audio)
 
 ## 🚀 Schnellstart
 
@@ -285,7 +286,9 @@ Docker/Monitoring Health-Check.
   "api": {
     "host": "127.0.0.1",            // Nur localhost per default
     "port": 8080,
-    "enable_https": false
+    "enable_https": true,           // HTTPS standardmäßig aktiv
+    "cert_file": null,              // null = automatisches selbst-signiertes Zertifikat
+    "key_file": null
   },
   "device": {
     "name": "Icom IC-905",
@@ -335,8 +338,41 @@ Per default bindet die API nur an `127.0.0.1` (localhost):
 
 Für Netzwerk-Zugriff:
 - Setze `host` auf `0.0.0.0` in `config.json`
-- Aktiviere HTTPS mit `enable_https: true`
-- Stelle TLS-Zertifikat bereit
+- HTTPS ist standardmäßig aktiv (`enable_https: true`)
+
+### HTTPS
+
+HTTPS ist **standardmäßig aktiv**. Beim Start wird automatisch ein selbst-signiertes Zertifikat erzeugt (via `cryptography`-Paket), falls kein eigenes angegeben ist.
+
+**Standard (selbst-signiertes Zertifikat):**
+```json
+{
+  "api": {
+    "enable_https": true,
+    "cert_file": null,
+    "key_file": null
+  }
+}
+```
+
+**Eigenes Zertifikat (empfohlen für Netzwerk-Betrieb):**
+```json
+{
+  "api": {
+    "enable_https": true,
+    "cert_file": "/pfad/zu/rigbridge.crt",
+    "key_file":  "/pfad/zu/rigbridge.key"
+  }
+}
+```
+
+> **Empfehlung für lokales Netzwerk:** [`mkcert`](https://github.com/FiloSottile/mkcert) erzeugt lokal vertrauenswürdige Zertifikate ohne Browser-Warnungen.  
+> Ideal in Kombination mit einem lokalen DNS-Resolver (z.B. Pi-hole):
+> ```bash
+> mkcert -install
+> mkcert rigbridge.local
+> ```
+> Die erzeugten Dateien `rigbridge.local.pem` und `rigbridge.local-key.pem` dann als `cert_file`/`key_file` eintragen.
 
 ### Secrets
 
@@ -452,4 +488,240 @@ ls -la /dev/tty*
 ---
 
 **Version:** 0.1.0  
-**Zuletzt aktualisiert:** 3. März 2026
+**Zuletzt aktualisiert:** 21. Juni 2026
+
+---
+
+## 🎙 Audio-Streaming API (IC-905 USB-Audio)
+
+Das IC-905 stellt über USB zwei ALSA-Geräte bereit:
+
+| Richtung | ALSA-Gerät | Bedeutung |
+|---|---|---|
+| **Capture** (`pcmC0D0c`) | Host-Mikrofon | **RX** – Empfangsaudio des IC-905 |
+| **Playback** (`pcmC0D0p`) | Host-Lautsprecher | **TX** – Eingang IC-905-Mikrofon |
+
+### REST-Endpunkte
+
+#### `GET /api/audio/devices`
+
+Listet alle via PortAudio/ALSA sichtbaren Audio-Geräte.
+
+**Response:**
+```json
+{
+  "devices": [
+    {
+      "index": 0,
+      "name": "USB Audio CODEC: USB Audio (hw:0,0)",
+      "max_input_channels": 1,
+      "max_output_channels": 1,
+      "default_samplerate": 48000.0,
+      "supports_capture": true,
+      "supports_playback": true
+    }
+  ],
+  "sounddevice_available": true
+}
+```
+
+#### `GET /api/audio/config`
+
+Liefert die gespeicherte Audio-Konfiguration.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "capture_device": "0",
+  "playback_device": "0",
+  "sample_rate": 48000,
+  "format": "S16_LE",
+  "codec": "pcm"
+}
+```
+
+#### `PUT /api/config` (Audio-Abschnitt)
+
+Speichert die Audio-Konfiguration persistent in `config.json`.
+
+**Request:**
+```json
+{
+  "audio": {
+    "enabled": true,
+    "capture_device": "0",
+    "playback_device": "0",
+    "sample_rate": 48000,
+    "format": "S16_LE",
+    "codec": "pcm"
+  }
+}
+```
+
+| Feld | Typ | Werte | Beschreibung |
+|---|---|---|---|
+| `enabled` | bool | `true`/`false` | Audio-Streaming beim Start aktivieren |
+| `capture_device` | string | Gerät-Index (z.B. `"0"`) oder Name | RX-Gerät (IC-905 → Host) |
+| `playback_device` | string | Gerät-Index oder Name | TX-Gerät (Host → IC-905) |
+| `sample_rate` | int | `8000`, `16000`, `48000` | Abtastrate in Hz |
+| `format` | string | `S16_LE`, `S32_LE`, `F32_LE` | PCM-Format |
+| `codec` | string | `pcm` | Codec (Opus: geplant) |
+
+#### `GET /api/audio/status`
+
+Gibt den aktuellen Betriebszustand der Streams zurück.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "sounddevice_available": true,
+  "rx_active": true,
+  "tx_active": false,
+  "rx_clients_connected": 2,
+  "capture_device": "0",
+  "playback_device": "0",
+  "sample_rate": 48000,
+  "format": "S16_LE",
+  "codec": "pcm",
+  "last_error": null
+}
+```
+
+#### `POST /api/audio/start`
+
+Startet RX-Capture-Stream gemäß gespeicherter Konfiguration.
+
+#### `POST /api/audio/stop`
+
+Stoppt alle laufenden Audio-Streams.
+
+---
+
+### WebSocket-Endpunkte
+
+#### `WS /api/audio/rx` — IC-905 RX → Client
+
+Sendet kontinuierlich PCM-Audio-Chunks als Binärdaten an den Client.
+
+- **Auto-Start beim Connect**: Der Server-seitige RX-Stream startet automatisch beim ersten Client-Connect — kein vorheriges `POST /api/audio/start` nötig
+- Nach `accept()` sendet der Server zuerst eine **JSON-Status-Nachricht** (Text-Frame), danach folgen kontinuierliche Binär-Frames:
+  ```json
+  {"status": "connected", "rx_active": true, "sample_rate": 48000, "format": "S16_LE"}
+  ```
+- Mehrere Clients gleichzeitig werden unterstützt (**Broadcast**)
+- Verbindungsabbruch eines Clients stoppt den Stream nicht für andere
+- Client kann `"ping"` (Text) senden, Server antwortet mit `"pong"`
+- Bei Fehler (z.B. `sounddevice` nicht verfügbar): JSON `{"error": "..."}` + WebSocket-Close mit Code `1011`
+
+**Beispiel (Python):**
+```python
+import asyncio, websockets
+
+async def receive_rx():
+    uri = "ws://localhost:8081/api/audio/rx"
+    async with websockets.connect(uri) as ws:
+        while True:
+            pcm_chunk = await ws.recv()   # bytes: S16_LE PCM
+            # → in ffmpeg, sounddevice.play() etc. weiterverarbeiten
+
+asyncio.run(receive_rx())
+```
+
+**Beispiel – YouTube-Stream einspeisen:**
+```python
+import asyncio, subprocess, websockets
+
+async def stream_youtube_to_rig(youtube_url: str):
+    # ffmpeg: YouTube-Audio → PCM S16_LE 48 kHz Mono
+    proc = subprocess.Popen([
+        "ffmpeg", "-i", youtube_url,
+        "-vn", "-acodec", "pcm_s16le",
+        "-ar", "48000", "-ac", "1",
+        "-f", "s16le", "pipe:1"
+    ], stdout=subprocess.PIPE)
+
+    uri = "ws://localhost:8081/api/audio/tx"
+    async with websockets.connect(uri) as ws:
+        while chunk := proc.stdout.read(4096):
+            await ws.send(chunk)
+
+asyncio.run(stream_youtube_to_rig("https://youtube.com/watch?v=..."))
+```
+
+#### `WS /api/audio/tx` — Client → IC-905 TX (Mikrofon)
+
+Empfängt PCM-Audio-Chunks als Binärdaten und gibt sie auf den TX-Eingang des IC-905 aus.
+
+- **Exklusiver Zugriff**: Nur ein TX-Client gleichzeitig
+- Ist TX bereits belegt, wird die Verbindung mit Code `1008` abgelehnt
+- Client sendet rohe PCM-Bytes (Format/Samplerate gemäß Konfiguration)
+
+---
+
+### PTT — Sendetaste via CI-V
+
+Der Browser-TX-Sender und externe Clients können die Sendetaste (PTT) über CI-V steuern:
+
+#### `PUT /api/rig/command` — PTT EIN
+
+```bash
+curl -X PUT https://localhost:8080/api/rig/command \
+  -H "Content-Type: application/json" \
+  -d '{"command": "send_transceiver_status", "data": {"status": true}}'
+```
+
+**Response:**
+```json
+{"success": true, "data": {"status": true}}
+```
+
+#### `PUT /api/rig/command` — PTT AUS
+
+```bash
+curl -X PUT https://localhost:8080/api/rig/command \
+  -H "Content-Type: application/json" \
+  -d '{"command": "send_transceiver_status", "data": {"status": false}}'
+```
+
+**Response:**
+```json
+{"success": true, "data": {"status": true}}
+```
+
+> **Hinweis:** Der `send_transceiver_status`-Befehl muss in der gerätespezifischen YAML-Datei definiert sein.  
+> Der Browser-TX-Sender setzt PTT automatisch beim Aktivieren/Deaktivieren des PTT-Buttons.
+
+---
+
+### Docker: Audio-Gerät-Passthrough
+
+Damit der Container auf die IC-905 USB-Audio-Geräte zugreifen kann, müssen in `docker-compose.yml` folgende Einträge gesetzt sein:
+
+```yaml
+devices:
+  - /dev/snd/pcmC0D0c:/dev/snd/pcmC0D0c   # RX (Capture)
+  - /dev/snd/pcmC0D0p:/dev/snd/pcmC0D0p   # TX (Playback)
+  - /dev/snd/controlC0:/dev/snd/controlC0  # ALSA Control
+
+group_add:
+  - "29"   # audio-Gruppe (GID 29 auf Jetson/Debian)
+```
+
+> **Hinweis:** Die Gerät-IDs (`pcmC0D0c`, `pcmC0D0p`) können je nach Reihenfolge der angeschlossenen USB-Geräte variieren.  
+> Mit `arecord -l` und `aplay -l` lässt sich das korrekte Gerät auf dem Host ermitteln.
+
+### Python-Abhängigkeiten (Audio)
+
+Das Audio-Modul benötigt `sounddevice` und `numpy` (PCM-Konvertierung). Beide sind in `requirements.txt` enthalten:
+
+```bash
+pip install -r requirements.txt
+```
+
+| Paket | Zweck |
+|---|---|
+| `sounddevice` | ALSA/PortAudio-Zugriff für RX-Capture und TX-Playback |
+| `numpy` | PCM-Puffer-Konvertierung in `audio_manager.py` |
+| `cryptography` | Automatische Generierung selbst-signierter Zertifikate (HTTPS) |

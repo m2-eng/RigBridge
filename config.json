@@ -1,42 +1,51 @@
 {
-  "usb": {
-    "port": "/dev/ttyACM0",
-    "baud_rate": 115200,
-    "data_bits": 8,
-    "stop_bits": 1,
-    "parity": "N",
-    "timeout": 100.0,
-    "reconnect_interval": 5
-  },
-  "api": {
-    "port": 8080,
-    "health_check_enabled": true,
-    "enable_https": false,
-    "cert_file": null,
-    "key_file": null,
-    "log_level": "INFO"
-  },
-  "wavelog": {
-    "enabled": true,
-    "api_url": "https://api.wavelog.local",
-    "api_key_or_secret_ref": "",
-    "polling_interval": 10,
-    "radio_name": "ICOM IC-905",
-    "station_id": null,
-    "wavelog_gate_http_base": "http://localhost:54321",
-    "wavelog_gate_ws_url": "ws://localhost:54322"
-  },
-  "secret_provider": {
-    "provider": "vault",
-    "vault_url": "http://127.0.0.1:8200",
-    "vault_mount": "secret",
-    "token_file": "/run/secrets/vault_token"
-  },
-  "device": {
-    "name": "ICOM IC905",
-    "manufacturer": "icom",
-    "protocol_file": "ic905",
-    "controller_address": "0xE0",
-    "radio_address": "0xA4"
-  }
+    "usb": {
+        "port": "/dev/ttyACM0",
+        "baud_rate": 115200,
+        "data_bits": 8,
+        "stop_bits": 1,
+        "parity": "N",
+        "timeout": 100.0,
+        "reconnect_interval": 5
+    },
+    "api": {
+        "port": 8080,
+        "health_check_enabled": true,
+        "enable_https": true,
+        "cert_file": null,
+        "key_file": null,
+        "log_level": "INFO"
+    },
+    "wavelog": {
+        "enabled": true,
+        "api_url": "https://api.wavelog.local",
+        "api_key_or_secret_ref": "",
+        "polling_interval": 10,
+        "logbook_update_interval": 2,
+        "radio_name": "ICOM IC-905",
+        "station_id": null,
+        "wavelog_gate_http_base": "http://localhost:54321",
+        "wavelog_gate_ws_url": "ws://localhost:54322"
+    },
+    "secret_provider": {
+        "provider": "vault",
+        "vault_url": "http://127.0.0.1:8200",
+        "vault_mount": "secret",
+        "token_file": "/run/secrets/vault_token"
+    },
+    "device": {
+        "name": "ICOM IC905",
+        "manufacturer": "icom",
+        "protocol_file": "ic905",
+        "controller_address": "0xE0",
+        "radio_address": "0xA4"
+    },
+    "audio": {
+        "enabled": true,
+        "capture_device": "0",
+        "playback_device": "0",
+        "sample_rate": 48000,
+        "format": "S16_LE",
+        "codec": "pcm"
+    }
 }

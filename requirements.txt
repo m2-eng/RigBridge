@@ -10,6 +10,8 @@ pydantic==2.7.1                     # Data validation and serialization
 pyyaml==6.0.1                       # YAML parsing for protocol definitions
 pyserial==3.5                       # USB/Serial communication
 cryptography==42.0.5                # For encryption (secret storage)
+sounddevice==0.5.1                  # ALSA/PortAudio audio streaming (IC-905 USB-Audio)
+numpy==1.26.4                       # Numerische Arrays für Audio-Streaming (sounddevice-Abhängigkeit)
 
 # Utility
 requests==2.32.2                    # HTTP client for Wavelog integration

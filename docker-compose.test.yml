@@ -1,0 +1,91 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# docker-compose.test.yml – RigBridge Test-Umgebung
+#
+# Zweck: Testet Entwicklungsänderungen auf echter Hardware, ohne das
+#        produktive rigbridge-Image oder dessen Container zu verändern.
+#
+# Verwendung:
+#   ./docker/test-start.sh    → rigbridge stoppen, rigbridge-test starten
+#   ./docker/test-stop.sh     → rigbridge-test stoppen, rigbridge wieder starten
+#
+# Der Quellcode aus dem Repository wird direkt eingebunden (kein Image-Rebuild
+# nötig für reine Python/Frontend-Änderungen).
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Expliziter Projektname verhindert Kollision mit dem Produktions-Projekt
+# "rigbridge" (aus /ssd/repos/RigBridge), das denselben Verzeichnisnamen hat.
+name: rigbridge-test
+
+services:
+  rigbridge-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+
+    image: rigbridge:test
+
+    container_name: rigbridge-test
+    restart: "no"  # Test-Container läuft nur auf explizite Anforderung
+
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${TEST_PORT:-8081}:8080"
+
+    volumes:
+      # Konfigurationsdatei (read-write wie Produktion)
+      - ./config.json:/app/config.json
+      - ./theme.css:/app/src/frontend/assets/theme.css
+      # Quellcode live eingebunden – kein Rebuild bei Python/Frontend-Änderungen
+      - ./src:/app/src:ro
+      - ./protocols:/app/protocols:ro
+
+    environment:
+      - PYTHONUNBUFFERED=1
+
+    # USB/Serial-Geräte (CI-V, wie Produktion)
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/ttyACM1:/dev/ttyACM1
+      # IC-905 USB-Audio (ALSA)
+      - /dev/snd/pcmC0D0c:/dev/snd/pcmC0D0c
+      - /dev/snd/pcmC0D0p:/dev/snd/pcmC0D0p
+      - /dev/snd/controlC0:/dev/snd/controlC0
+
+    # dialout (20) + audio (29)
+    group_add:
+      - "20"
+      - "29"
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, ssl; urllib.request.urlopen('https://localhost:8080/health', context=ssl._create_unverified_context())"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - rigbridge_test_net
+
+networks:
+  rigbridge_test_net:
+    driver: bridge
+    internal: false
